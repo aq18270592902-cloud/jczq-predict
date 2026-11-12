@@ -2052,6 +2052,26 @@
     if (out.length) bets = out.concat(bets);
   }
 
+  /* 数据新鲜度角标：显示 data.js 里记录的自动刷新时间，让访客一眼知道数据是不是最新的 */
+  function renderDataStamp() {
+    const el = document.getElementById("dataStamp");
+    if (!el) return;
+    const meta = (DATA && DATA.meta) || {};
+    if (!meta.updatedAt) { el.textContent = ""; return; }
+    const t = new Date(meta.updatedAt);
+    if (isNaN(t.getTime())) { el.textContent = ""; return; }
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = (t.getMonth() + 1) + "-" + pad(t.getDate()) + " " + pad(t.getHours()) + ":" + pad(t.getMinutes());
+    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    let ago;
+    if (mins < 1) ago = "刚刚";
+    else if (mins < 60) ago = mins + " 分钟前";
+    else if (mins < 1440) ago = Math.round(mins / 60) + " 小时前";
+    else ago = Math.round(mins / 1440) + " 天前";
+    el.textContent = "数据更新于 " + stamp + "（" + ago + "）";
+    el.title = "官方数据自动刷新时间：" + meta.updatedAt + "，共 " + (meta.matches || 0) + " 场 / " + (meta.days || 0) + " 个比赛日";
+  }
+
   function runAppInit() {
     /* currentUser 已就绪 → loadJSON 走 userDataCache → 把服务器数据回填到内存变量 */
     savedFinals = null;
@@ -2064,6 +2084,7 @@
     applyRenames();
     applySavedPreds();
     purgeOldModel();
+    renderDataStamp();
     if (window.STATIC_DEMO) { seedDemoModels(); seedDemoBets(); }
     /* 启动官方数据自动轮询 + 初次渲染（静态演示模式没有后端，不轮询） */
     if (!window.STATIC_DEMO) {
