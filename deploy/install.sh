@@ -49,6 +49,9 @@ WorkingDirectory=${APP_DIR}
 Environment=NODE_ENV=production
 Environment=PORT=${PORT}
 Environment=HOST=127.0.0.1
+# 前面有 nginx 反代，所有连接都来自 127.0.0.1；开这个开关让服务按 X-Forwarded-For 还原真实来源，
+# 否则「本机回环免鉴权」会让 /api/update 变成任何访问者都能触发。
+Environment=TRUST_PROXY=1
 EnvironmentFile=-${APP_DIR}/.env
 ExecStart=$(command -v node) ${APP_DIR}/server.js
 Restart=always
@@ -79,6 +82,7 @@ server {
         proxy_pass http://127.0.0.1:${PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
+        # 这两个头是 /api/update 鉴权还原真实来源的依据，别删
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
