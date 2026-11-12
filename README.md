@@ -92,6 +92,9 @@ jczq-predict/
 ├─ sw.js              # Service Worker：页面 network-first，app/data/css 走 stale-while-revalidate
 ├─ robots.txt         # 允许抓取，屏蔽 /api/ 与用户数据
 ├─ sitemap.xml        # 站点地图
+├─ 404.html           # 自定义 404 页（GitHub Pages 会自动接管）
+├─ .nojekyll          # 跳过 Jekyll，保证以 . 开头的目录原样发布
+├─ .gitattributes     # 统一换行符（ps1/bat 保持 CRLF）
 ├─ users/             # 用户数据，含密码哈希，已 gitignore
 ├─ 启动网页服务.vbs
 └─ 拉取官方数据.bat
