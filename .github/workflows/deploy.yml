@@ -101,4 +101,11 @@ jobs:
             sleep 3
             systemctl is-active jczq-predict
             curl -fsS http://127.0.0.1:8765/api/status > /dev/null && echo "api/status OK"
+            # 经 nginx 再验一次（端口可能是 8080 或自动退让后的值）
+            if [ -f /etc/nginx/conf.d/jczq-predict.conf ]; then
+              LP=$(grep -oE "^[[:space:]]*listen[[:space:]]+[0-9]+" /etc/nginx/conf.d/jczq-predict.conf | head -1 | grep -oE "[0-9]+$")
+              LP=${LP:-8080}
+              echo "对外端口: $LP"
+              curl -fsS -o /dev/null -w "nginx / => %{http_code}\n" "http://127.0.0.1:$LP/"
+            fi
           '
