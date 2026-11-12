@@ -1,0 +1,48 @@
+name: refresh-data
+
+# 每 30 分钟从澳客 + 体彩官方接口拉一次最新赛程 / 赛果 / 赔率，写回 data.js 并提交。
+# 这样 GitHub Pages 上的数据永远是最新的，不依赖任何服务器在线。
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 语法检查
+        run: node --check fetch_official.js
+
+      - name: 拉取官方数据
+        run: node fetch_official.js
+
+      - name: 校验产物结构
+        run: node scripts/verify-data.js
+
+      - name: 有变化才提交
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data.js; then
+            echo "数据无变化，跳过提交"
+            exit 0
+          fi
+          git add data.js
+          git commit -m "chore(data): 自动刷新官方赛程赛果 $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git push && break || sleep 5
+          done
