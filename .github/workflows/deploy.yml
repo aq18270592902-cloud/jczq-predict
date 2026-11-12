@@ -84,11 +84,18 @@ jobs:
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$USER@$HOST" '
             set -e
-            if [ ! -f /etc/systemd/system/jczq-predict.service ]; then
+            UNIT=/etc/systemd/system/jczq-predict.service
+            if [ ! -f "$UNIT" ]; then
               echo "首次部署：跑安装脚本"
               bash /opt/jczq-predict/deploy/install.sh
             else
               chown -R jczq-predict:jczq-predict /opt/jczq-predict || true
+              # 老服务补上 TRUST_PROXY，否则 nginx 反代下所有请求都算本机
+              if ! grep -q '^Environment=TRUST_PROXY=1' "$UNIT"; then
+                sed -i '/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1' "$UNIT"
+                systemctl daemon-reload
+                echo "已补 TRUST_PROXY=1"
+              fi
               systemctl restart jczq-predict
             fi
             sleep 3
