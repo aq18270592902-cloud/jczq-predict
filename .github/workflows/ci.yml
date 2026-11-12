@@ -27,6 +27,34 @@ jobs:
             node --check "$f" && echo "OK  $f"
           done
 
+      - name: PWA 资源完整
+        run: |
+          node -e '
+            const fs = require("fs");
+            const idx = fs.readFileSync("index.html", "utf8");
+            const must = [
+              ["manifest.webmanifest", "PWA 清单"],
+              ["sw.js", "Service Worker"],
+              ["icons/icon-192.png", "192 图标"],
+              ["icons/icon-512.png", "512 图标"],
+              ["icons/icon-180.png", "iOS 图标"]
+            ];
+            let bad = 0;
+            for (const [f, label] of must) {
+              if (!fs.existsSync(f)) { console.error("FAIL: 缺 " + f + "（" + label + "）"); bad++; }
+            }
+            if (!/rel="manifest"/.test(idx)) { console.error("FAIL: index.html 没有 rel=manifest"); bad++; }
+            if (!/serviceWorker/.test(idx)) { console.error("FAIL: index.html 没有注册 Service Worker"); bad++; }
+            const mf = JSON.parse(fs.readFileSync("manifest.webmanifest", "utf8"));
+            if (!mf.name || !mf.start_url || !Array.isArray(mf.icons) || mf.icons.length < 2) {
+              console.error("FAIL: manifest 字段不全（name/start_url/icons≥2）"); bad++;
+            }
+            const sw = fs.readFileSync("sw.js", "utf8");
+            if (!/CACHE\s*=\s*"/.test(sw)) { console.error("FAIL: sw.js 没有 CACHE 版本号"); bad++; }
+            if (bad) process.exit(1);
+            console.log("OK PWA 资源完整，manifest name=" + mf.name);
+          '
+
       - name: 启动服务并冒烟
         run: |
           node server.js &
