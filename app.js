@@ -15,6 +15,15 @@
   /* 默认选中今天：今天有数据就选今天，否则取最近日期 */
   const todayStr = new Date().toLocaleDateString("sv-CN"); /* YYYY-MM-DD */
   let curDate = dates.includes(todayStr) ? todayStr : (dates[0] || "");
+  /* 静态演示模式：默认落在「最终预测填得最满」的那一天，让访客一进来就看到有内容的对比表 */
+  if (window.STATIC_DEMO) {
+    let best = curDate, bestN = -1;
+    dates.forEach((d) => {
+      const n = (DATA.days[d].matches || []).filter((m) => m.final && (m.final.wdl || m.final.tg || m.final.hf || m.final.sc)).length;
+      if (n > bestN) { bestN = n; best = d; }
+    });
+    curDate = best;
+  }
 
   /* ---------- 用户态：登录后 currentUser 非 null 时，loadJSON 走 userDataCache；未登录走 localStorage 兜底 ---------- */
   let currentUser = null;
@@ -42,7 +51,7 @@
   let savedFinals = null; /* myFinal 内存镜像，避免每次重读；登录后由 loadUserDataFromServer 同步 */
   function loadSavedFinals() {
     if (savedFinals) return savedFinals;
-    if (currentUser) {
+    if (currentUser && !window.STATIC_DEMO) {
       const v = userDataCache.myFinal;
       savedFinals = (v && typeof v === "object") ? v : {};
     } else {
@@ -65,7 +74,7 @@
   function persistUser(key, value) {
     userDataCache[key] = value;
     if (key === "myFinal") savedFinals = value; /* 同步镜像 */
-    if (currentUser) {
+    if (currentUser && !window.STATIC_DEMO) {
       fetch("/api/data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +104,7 @@
   const LS_ORDER = LS_KEY_MAP.order;    /* 模型列从左到右的显示顺序 */
   /* loadJSON：登录后从 userDataCache 取；未登录走 localStorage */
   const loadJSON = (k, def) => {
-    if (currentUser) {
+    if (currentUser && !window.STATIC_DEMO) {
       const sk = lsKeyToServer(k);
       if (sk && Object.prototype.hasOwnProperty.call(userDataCache, sk)) return userDataCache[sk];
       return def;
@@ -212,12 +221,26 @@
   sel.value = curDate;
   sel.addEventListener("change", () => { curDate = sel.value; renderAll(); });
 
+  function activateTab(name) {
+    const btn = document.querySelector('.tab[data-tab="' + name + '"]');
+    if (!btn) return false;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+    return true;
+  }
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
-      document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + btn.dataset.tab));
+      activateTab(btn.dataset.tab);
+      /* 记住当前页签，刷新后停在原处 */
+      try { history.replaceState(null, "", "?tab=" + btn.dataset.tab); } catch (e) {}
     });
   });
+  /* 深链：?tab=compare|bets|stats 直接落到对应页签（README 里可给直达链接） */
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const t = q.get("tab");
+    if (t && activateTab(t)) window.__initialTab = t;
+  })();
 
   /* ---------- 工具函数 ---------- */
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1899,6 +1922,80 @@
   })();
 
   /* runAppInit：登录后启动主应用初始化（applySaved*、purge、autoCheck、renderAll） */
+  /* ===== 演示数据：GitHub Pages 静态快照专用，不写入任何持久化 =====
+   * 目的：让访客一进来就能看到「模型对比」「投注方案」两个页签有真实内容，
+   * 而不是两张空表。生成规则是确定性的（按 日期+比赛编号 做 FNV-1a 哈希），
+   * 同一场比赛每次刷新结果完全一致，不会出现「刷新就变」的假象。
+   */
+  function demoHash(str) {
+    let x = 2166136261;
+    for (let i = 0; i < str.length; i++) { x ^= str.charCodeAt(i); x = Math.imul(x, 16777619); }
+    return x >>> 0;
+  }
+  function seedDemoModels() {
+    const WDL = ["胜", "平", "负"];
+    const TG = ["0球", "1球", "2球", "3球", "4球", "5球"];
+    const HF = ["胜胜", "平胜", "负胜", "平平", "胜负", "平负", "负负", "负平"];
+    const SC = ["0:0", "1:0", "0:1", "1:1", "2:0", "0:2", "2:1", "1:2", "3:0", "2:2"];
+    const SRC = [["模型A·示例", 11], ["模型B·示例", 97]];
+    dates.forEach((d) => {
+      (DATA.days[d].matches || []).forEach((m) => {
+        m.preds = m.preds || {};
+        SRC.forEach((pair) => {
+          const name = pair[0], salt = pair[1];
+          if (m.preds[name]) return;
+          const x = demoHash(d + "|" + m.id + "|" + salt);
+          m.preds[name] = {
+            wdl: WDL[x % 3],
+            tg: TG[(x >>> 3) % 6],
+            hf: HF[(x >>> 7) % 8],
+            sc: SC[(x >>> 11) % 10]
+          };
+        });
+      });
+    });
+  }
+  /* 三条示例方案覆盖三种状态：已中奖 / 未中 / 待开奖 */
+  function seedDemoBets() {
+    if (bets.length) return;
+    const findM = (date, id) => ((DATA.days[date] && DATA.days[date].matches) || []).find((x) => x.id === id);
+    const mkLeg = (date, id, pick, odds) => {
+      const m = findM(date, id);
+      return { date: date, id: id, home: m.home, away: m.away, play: "wdl", pick: pick, odds: odds || (m.odds && m.odds.h) || 1.8, handi: 0 };
+    };
+    const resPick = (date, id) => {
+      const m = findM(date, id);
+      const r = m && m.result && m.result.score;
+      if (!r) return "";
+      const p = r.split(":").map(Number);
+      return p[0] > p[1] ? "胜" : p[0] === p[1] ? "平" : "负";
+    };
+    const out = [];
+    const d1 = "2026-09-26", d2 = "2026-09-27", d3 = "2026-11-14";
+    if (DATA.days[d1]) {
+      const legs = DATA.days[d1].matches.slice(0, 3).map((m) => mkLeg(d1, m.id, resPick(d1, m.id), m.odds && m.odds.h));
+      if (legs.length === 3) out.push({ id: 1, ts: "2026-09-26 17:42", legs: legs, modes: [3], mult: 1 });
+    }
+    if (DATA.days[d2]) {
+      const ms = DATA.days[d2].matches.slice(0, 2);
+      const legs = ms.map((m, i) => {
+        const good = resPick(d2, m.id);
+        const pick = i === 0 ? good : (good === "胜" ? "负" : "胜");
+        return mkLeg(d2, m.id, pick, m.odds && m.odds.h);
+      });
+      if (legs.length === 2) out.push({ id: 2, ts: "2026-09-27 15:10", legs: legs, modes: [2], mult: 1 });
+    }
+    if (DATA.days[d3]) {
+      const legs = DATA.days[d3].matches.slice(0, 3).map((m) => {
+        const o = m.odds || {};
+        const pick = (o.h || 9) <= (o.a || 9) ? "胜" : "负";
+        return mkLeg(d3, m.id, pick, pick === "胜" ? o.h : o.a);
+      });
+      if (legs.length === 3) out.push({ id: 3, ts: "2026-11-14 09:30", legs: legs, modes: [3], mult: 2 });
+    }
+    if (out.length) bets = out.concat(bets);
+  }
+
   function runAppInit() {
     /* currentUser 已就绪 → loadJSON 走 userDataCache → 把服务器数据回填到内存变量 */
     savedFinals = null;
@@ -1911,14 +2008,32 @@
     applyRenames();
     applySavedPreds();
     purgeOldModel();
-    /* 启动官方数据自动轮询 + 初次渲染 */
-    setTimeout(autoCheck, 3000);
-    setInterval(autoCheck, POLL_MIN * 60000);
+    if (window.STATIC_DEMO) { seedDemoModels(); seedDemoBets(); }
+    /* 启动官方数据自动轮询 + 初次渲染（静态演示模式没有后端，不轮询） */
+    if (!window.STATIC_DEMO) {
+      setTimeout(autoCheck, 3000);
+      setInterval(autoCheck, POLL_MIN * 60000);
+    }
     renderAll();
   }
 
   /* bootApp：脚本末尾调用，硬门禁入口 */
   async function bootApp() {
+    /* 静态演示模式（GitHub Pages）：没有后端，数据用 localStorage 承载，只读快照 */
+    if (window.STATIC_DEMO) {
+      currentUser = "demo";
+      hideLoginMask();
+      const el = document.getElementById("userPhone");
+      if (el) el.textContent = "演示模式";
+      const lo = document.getElementById("btnLogout");
+      if (lo) lo.style.display = "none";
+      const sync = document.getElementById("btnSync");
+      if (sync) { sync.textContent = "静态快照 · 数据不自动更新"; sync.disabled = true; }
+      const bar = document.getElementById("demoBar");
+      if (bar) bar.hidden = false;
+      runAppInit();
+      return;
+    }
     try {
       const me = await (await fetch("/api/me", { cache: "no-store" })).json();
       if (me.ok) {
