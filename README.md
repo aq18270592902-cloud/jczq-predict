@@ -8,6 +8,7 @@
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="依赖" src="https://img.shields.io/badge/%E4%BE%9D%E8%B5%96-0-4c8bf5?style=flat-square">
   <img alt="数据" src="https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E4%BB%85%E5%AD%98%E6%9C%AC%E6%9C%BA-8957e5?style=flat-square">
+  <img alt="PWA" src="https://img.shields.io/badge/PWA-%E5%8F%AF%E5%AE%89%E8%A3%85-5a0fc8?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square">
 </p>
 
@@ -70,6 +71,8 @@ node server.js
 
 Windows 双击 `启动网页服务.vbs` 静默启动（无黑窗）。开机自启：把该 vbs 的快捷方式丢进 `shell:startup`。
 
+想装成手机 App 直接看：打开演示站 → 浏览器菜单「添加到主屏幕」。演示站已带 PWA 清单和 Service Worker，装完断网也能开（数据是快照，不会自动更新）。
+
 首次启动 8 秒后自动拉一次数据，之后每 2 小时一次。
 
 ## 目录结构
@@ -83,6 +86,9 @@ jczq-predict/
 ├─ style.css          # 样式
 ├─ data.js            # 赛事数据（fetch_official.js 自动生成/覆盖）
 ├─ docs/screenshots/  # README 用的界面截图
+├─ icons/             # 180 / 192 / 512 三种尺寸的站点图标
+├─ manifest.webmanifest  # PWA 清单：可「添加到主屏幕」
+├─ sw.js              # Service Worker：离线缓存静态资源
 ├─ users/             # 用户数据，含密码哈希，已 gitignore
 ├─ 启动网页服务.vbs
 └─ 拉取官方数据.bat
