@@ -1741,9 +1741,10 @@
   const AUTO_AGE_MIN = 90;   /* 数据超过 90 分钟视为过旧 */
   const POLL_MIN = 30;       /* 页面开着时每 30 分钟查一次 */
   let autoBusy = false;
+  let autoDenied = false;   /* 服务端拒绝了自动更新（未登录），之后不再反复请求 */
   function setSyncMsg(html) { const el = $("#syncMsg"); if (el) el.innerHTML = html; }
   async function autoCheck() {
-    if (autoBusy) return;
+    if (autoBusy || autoDenied) return;
     try {
       const st = await (await fetch("/api/status")).json();
       if (st.updating) { setSyncMsg('<span class="sync-run">正在更新官方数据…</span>'); return; }
@@ -1753,8 +1754,10 @@
       }
       autoBusy = true;
       setSyncMsg('<span class="sync-run">正在更新官方数据…</span>');
-      const r = await (await fetch("/api/update")).json();
+      const resp = await fetch("/api/update");
       autoBusy = false;
+      if (resp.status === 403) { autoDenied = true; setSyncMsg(""); return; }
+      const r = await resp.json();
       if (r.busy) return;
       if (r.ok) {
         setSyncMsg('<a href="javascript:void(0)" id="syncReload" class="sync-new">官方数据有更新，点击查看最新 ↻</a>');
@@ -1779,6 +1782,11 @@
       const diff = Math.round((today - cur) / 86400000);
       const url = "/api/update" + (diff >= 2 ? "?date=" + curDate : "");
       const r = await fetch(url);
+      if (r.status === 403) {
+        msg.textContent = "需要登录后才能更新数据（或让管理员配置 ADMIN_TOKEN）";
+        btn.disabled = false; btn.textContent = "↻ 更新比赛数据";
+        return;
+      }
       const j = await r.json();
       if (j.ok) {
         msg.textContent = "官方数据已更新，正在刷新页面…";
