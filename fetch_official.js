@@ -98,32 +98,44 @@ function parseRows(html) {
   return rows;
 }
 
-/* 每个编号前缀（周五/周六…）的业务日 = 组内观测日期中，星期与编号前缀一致、离今天最近的那天 */
+/* 业务日归属：竞彩的「周四001」指周四这一期，实际开赛可能在周四凌晨到周五凌晨之间，
+ * 页面 data-date 给的是真实开赛日，不等于业务日。例如 11-12 是周四，
+ * 「周四00x」的 data-date 常是 11-13（周五凌晨开球），而「周五00x」会是 11-14。
+ * 直接按 data-date 建键会把整期错位一天，所以从开赛日往前回退（最多 3 天），
+ * 取第一个星期与前缀一致的日期作为业务日。 */
+const WD_MAP = { 周一: 1, 周二: 2, 周三: 3, 周四: 4, 周五: 5, 周六: 6, 周日: 0 };
+
+function businessDateOf(idPrefix, matchDate) {
+  const wd = WD_MAP[idPrefix.slice(0, 2)];
+  if (wd === undefined || !matchDate) return '';
+  let d = new Date(matchDate + 'T00:00:00');
+  if (isNaN(d)) return '';
+  for (let back = 0; back <= 3; back++) {
+    if (d.getDay() === wd) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + dd;
+    }
+    d = new Date(d.getTime() - 86400000);
+  }
+  return '';
+}
+
 function groupByBusinessDate(rows) {
-  const groups = {};
+  const out = {};
   for (const r of rows) {
     const pre = r.id.slice(0, 3);
-    (groups[pre] = groups[pre] || []).push(r);
-  }
-  const WD = { 周一: 1, 周二: 2, 周三: 3, 周四: 4, 周五: 5, 周六: 6, 周日: 0 };
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const out = {};
-  for (const [pre, list] of Object.entries(groups)) {
-    const dates = [...new Set(list.map((r) => r.date).filter(Boolean))];
-    let best = '';
-    let bestDiff = Infinity;
-    const wd = WD[pre.slice(0, 2)];
-    for (const ds of dates) {
-      if (wd === undefined || new Date(ds + 'T00:00:00').getDay() !== wd) continue;
-      const diff = Math.abs((new Date(ds + 'T00:00:00') - today) / 86400000);
-      if (diff < bestDiff) { bestDiff = diff; best = ds; }
+    let bd = businessDateOf(pre, r.date);
+    if (!bd) {
+      /* 页面没给日期时的兜底：按今天往回找该星期 */
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      bd = businessDateOf(pre, y + '-' + m + '-' + dd) || r.date || '';
     }
-    if (!best) { /* 兜底：取组内多数日期 */
-      const freq = {};
-      list.forEach((r) => { if (r.date) freq[r.date] = (freq[r.date] || 0) + 1; });
-      let n = 0; for (const [dt, c] of Object.entries(freq)) if (c > n) { n = c; best = dt; }
-    }
-    out[best] = (out[best] || []).concat(list);
+    (out[bd] = out[bd] || []).push(r);
   }
   return out;
 }
@@ -411,6 +423,23 @@ async function merge500(date) {
   const sp = await getSportteryOdds();
   log('体彩接口返回 ' + Object.keys(sp).length + ' 场赔率');
   mergeSportteryOdds(d, sp);
+
+  /* 清理历史错位：早期版本按 data-date 建键，导致 周四00x 落在周五、周五00x 落在周六。
+   * 修正后这些场次已在正确的业务日键下重建，原键里的同名编号属于孤儿，移除。 */
+  let orphan = 0;
+  for (const [date, day] of Object.entries(d.days)) {
+    const wd = new Date(date + 'T00:00:00').getDay();
+    const keep = [];
+    for (const m of day.matches || []) {
+      const pre = String(m.id || '').slice(0, 2);
+      const want = WD_MAP[pre];
+      if (want !== undefined && want !== wd) { orphan++; continue; }
+      keep.push(m);
+    }
+    day.matches = keep;
+    if (!keep.length) { delete d.days[date]; log('清理空业务日 ' + date); }
+  }
+  if (orphan) log('清理错位场次 ' + orphan + ' 条');
 
   saveAppData(d);
   log('已写回 ' + DATA_FILE);
