@@ -10,7 +10,8 @@ set -euo pipefail
 APP_NAME="jczq-predict"
 APP_DIR="/opt/${APP_NAME}"
 APP_USER="${APP_NAME}"
-PORT="${PORT:-8765}"
+PORT="${PORT:-8765}"          # Node 进程监听的本机端口
+WEB_PORT="${WEB_PORT:-8080}"  # nginx 对外端口（80 留给 naraka 静态站）
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
@@ -72,9 +73,19 @@ systemctl enable --now "${APP_NAME}"
 
 say "4/4 配 nginx 反代（没装 nginx 就跳过）"
 if command -v nginx >/dev/null; then
+  # 端口冲突检查：conf.d 里已有别的站点占着同一个 listen 且 server_name 都是 _ 时，
+  # nginx 只会用先加载的那个，本站会变成「访问 8080 打开的是别的项目」。
+  for f in /etc/nginx/conf.d/*.conf; do
+    [ -e "$f" ] || continue
+    [ "$f" = "/etc/nginx/conf.d/${APP_NAME}.conf" ] && continue
+    if grep -qE "^[[:space:]]*listen[[:space:]]+${WEB_PORT}[[:space:]]*;" "$f"; then
+      printf '\033[1;33m[!]\033[0m %s 也监听了 %s，本站改用 %s\n' "$f" "$WEB_PORT" "$((WEB_PORT+1))"
+      WEB_PORT=$((WEB_PORT+1))
+    fi
+  done
   cat > /etc/nginx/conf.d/${APP_NAME}.conf <<EOF
 server {
-    listen 80;
+    listen ${WEB_PORT};
     server_name _;
     client_max_body_size 8m;
 
@@ -96,6 +107,7 @@ else
   echo "    ssh -L ${PORT}:127.0.0.1:${PORT} root@<服务器IP>"
 fi
 
-say "完成。检查状态：systemctl status ${APP_NAME} --no-pager"
+say "完成。浏览器打开 http://<服务器IP>:${WEB_PORT}/"
+say "检查状态：systemctl status ${APP_NAME} --no-pager"
 say "看日志：journalctl -u ${APP_NAME} -f"
 say "本机自测：curl -s http://127.0.0.1:${PORT}/api/status"
