@@ -1,6 +1,12 @@
 # 用户数据（含密码哈希，严禁上传）
 users/
 
+# 卡密与密钥
+keys.json
+.env
+.env.local
+*.key
+
 # 依赖
 node_modules/
 
@@ -13,3 +19,5 @@ node_modules/
 .DS_Store
 Thumbs.db
 .trae/
+.vscode/
+.idea/
