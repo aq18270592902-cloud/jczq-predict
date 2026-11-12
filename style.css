@@ -937,3 +937,39 @@ body.logged-out main {
   .logout-btn { padding: 5px 12px; }
   .user-phone { font-size: 12px; }
 }
+
+/* ---------- 演示模式提示条（GitHub Pages 静态快照） ---------- */
+.demo-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 10px 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7c2d12;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+}
+.demo-bar[hidden] { display: none; }
+.demo-bar b {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ea580c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.demo-bar code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .demo-bar { font-size: 12px; padding: 8px 12px; }
+}
