@@ -238,3 +238,11 @@ node server.js
 ## 依赖
 
 无。只用 Node 内置模块：`http` `fs` `path` `crypto` `child_process`。Node 18+（需要全局 `fetch`）。
+
+---
+
+## 其他项目
+
+- [永劫无间 · 技能随机转盘](https://aq18270592902-cloud.github.io/naraka-skill-spinner/) —— 抽英雄 / F 技能 / V 奥义，纯前端转盘，断网也能转
+- [竞足预测汇总](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary) —— 官方赛程赛果 + 多源预测对比 + 命中率复盘
+- [总入口](https://aq18270592902-cloud.github.io/) —— 一张页面看全三个项目
