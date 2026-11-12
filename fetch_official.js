@@ -10,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
+/* Windows 自带 curl.exe，Linux/macOS 是 curl；部署到服务器时要能自动选对 */
+const CURL = process.platform === 'win32' ? 'curl.exe' : 'curl';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const URL_PAGE = 'https://www.okooo.com/jingcai/';
@@ -30,7 +32,7 @@ async function getPage(url) {
     log('fetch 失败(' + e.message + ')，改用 curl 兜底');
   }
   const tmp = path.join(os.tmpdir(), 'okooo_fetch_' + Math.random().toString(36).slice(2) + '.html');
-  execFileSync('curl.exe', ['-sL', '-A', UA, '-o', tmp, url]);
+  execFileSync(CURL, ['-sL', '-A', UA, '-o', tmp, url]);
   return new TextDecoder('gbk').decode(fs.readFileSync(tmp));
 }
 
@@ -166,7 +168,7 @@ async function get500(date) {
     const r = await fetch(URL_500 + date, { headers: { 'User-Agent': UA, 'Referer': 'https://trade.500.com/' } });
     if (r.ok) return new TextDecoder('gbk').decode(Buffer.from(await r.arrayBuffer()));
   } catch (e) { log('500 fetch 失败(' + e.message + ')，改用 curl'); }
-  execFileSync('curl.exe', ['-sL', '-A', UA, '-o', tmp, URL_500 + date]);
+  execFileSync(CURL, ['-sL', '-A', UA, '-o', tmp, URL_500 + date]);
   return new TextDecoder('gbk').decode(fs.readFileSync(tmp));
 }
 
@@ -210,7 +212,7 @@ async function get500Half(fid) {
   } catch (e) { /* 走 curl */ }
   if (!html) {
     const tmp = path.join(os.tmpdir(), 'w500d_' + fid + '_' + Math.random().toString(36).slice(2) + '.html');
-    try { execFileSync('curl.exe', ['-sL', '-A', UA, '-o', tmp, url]); html = new TextDecoder('gbk').decode(fs.readFileSync(tmp)); } catch (e) { return ''; }
+    try { execFileSync(CURL, ['-sL', '-A', UA, '-o', tmp, url]); html = new TextDecoder('gbk').decode(fs.readFileSync(tmp)); } catch (e) { return ''; }
   }
   const m = html.match(/半场[：:]?\s*(\d{1,2})\s*[-:：]\s*(\d{1,2})/);
   return m ? m[1] + ':' + m[2] : '';
