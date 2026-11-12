@@ -347,6 +347,16 @@ async function merge500(date) {
   log(date + ' 合并完成：新增 ' + added + ' 场，补比分 ' + scored + ' 处，补赔率 ' + oddsN + ' 处，校正队名 ' + fixedName + ' 处，补半场 ' + halfN + ' 处');
 }
 
+/* 合并两处赔率来源：胜平负三项取最新，其余玩法（rq/tg/hf/sc/sxds）保留已有的。
+ * 澳客列表页只给 {h,d,a}；若直接整体赋值，体彩接口灌进来的让球/总进球/半全场/比分玩法会被抹掉。 */
+function mergeOdds(base, p) {
+  const b = base.odds, n = p.odds;
+  if (base.result) return b || n || null;   /* 已完场：保留终盘，绝不覆盖 */
+  if (!b) return n || null;
+  if (!n) return b;
+  return Object.assign({}, b, { h: n.h, d: n.d, a: n.a });
+}
+
 (async () => {
   const args = process.argv.slice(2);
   const dateArg = args.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
@@ -392,8 +402,10 @@ async function merge500(date) {
         home: base.home || p.home,   /* 已有队名优先，避免页面简称覆盖全称 */
         away: base.away || p.away,
         rq: p.rq || base.rq || '',
-        /* 赔率会变动：未开赛场次每次拉取都刷新为最新（p.odds 优先），已完场保留终盘赔率 */
-        odds: base.result ? (base.odds || p.odds || null) : (p.odds || base.odds || null),
+        /* 赔率会变动：未开赛场次每次拉取都刷新为最新（p.odds 覆盖胜平负三项），已完场保留终盘赔率。
+         * 必须做对象合并而不是整体替换：澳客列表页只给 {h,d,a} 三项，
+         * 直接赋值会把体彩接口灌进来的让球/总进球/半全场/比分玩法整块抹掉（历史事故：83827B -> 61597B）。 */
+        odds: mergeOdds(base, p),
         preds: base.preds || {},
         final: base.final || { ...WDL_DEFAULT },
         result: base.result || (p.score ? { score: p.score, half: '' } : null)
