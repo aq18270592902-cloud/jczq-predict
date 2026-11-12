@@ -2859,7 +2859,10 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "1:2",
+            "half": "1:2"
+          }
         },
         {
           "id": "周四002",
@@ -2942,7 +2945,10 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "1:1",
+            "half": "0:1"
+          }
         },
         {
           "id": "周四003",
@@ -3219,7 +3225,7 @@ window.APP_DATA = {
     }
   },
   "meta": {
-    "updatedAt": "2026-11-12T15:16:07.654Z",
+    "updatedAt": "2026-11-12T20:59:19.917Z",
     "sources": [
       "okooo.com/jingcai",
       "sporttery.cn"
