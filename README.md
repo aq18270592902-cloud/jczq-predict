@@ -16,6 +16,8 @@
 
 > 演示站是静态快照（浏览器里跑，数据只读），用来先看界面长什么样。
 > 自动拉数据、账号同步、导出这些要本地 `node server.js` 才有。
+>
+> 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。
 
 ## 快捷入口
 
@@ -81,7 +83,8 @@ Windows 双击 `启动网页服务.vbs` 静默启动（无黑窗）。开机自�
 ```
 jczq-predict/
 ├─ server.js          # HTTP 服务：静态托管 + 账号 + 用户数据 API + 定时更新
-├─ fetch_official.js  # 抓取脚本：澳客竞彩 + 500 网，写入 data.js
+├─ fetch_official.js  # 抓取脚本：澳客竞彩 + 500 网 + 体彩接口，写入 data.js
+├─ scripts/verify-data.js  # data.js 结构校验（CI 与 refresh-data 都跑）
 ├─ index.html         # 单页前端
 ├─ app.js             # 前端逻辑（4 个 tab + 表格渲染 + 导出 + 演示模式）
 ├─ style.css          # 样式
@@ -94,7 +97,10 @@ jczq-predict/
 ├─ sitemap.xml        # 站点地图
 ├─ 404.html           # 自定义 404 页（GitHub Pages 会自动接管）
 ├─ .nojekyll          # 跳过 Jekyll，保证以 . 开头的目录原样发布
-├─ .gitattributes     # 统一换行符（ps1/bat 保持 CRLF）
+├─ .gitattributes     # 统一换行符（ps1/bat 保持 CRLF，sh 保持 LF）
+├─ .github/workflows/ # ci.yml / refresh-data.yml / deploy.yml
+├─ deploy/install.sh  # 服务器一键安装（systemd + nginx）
+├─ DEPLOY.md          # 部署文档
 ├─ users/             # 用户数据，含密码哈希，已 gitignore
 ├─ 启动网页服务.vbs
 └─ 拉取官方数据.bat
@@ -131,6 +137,33 @@ node fetch_official.js 2026-11-12        # 指定日期
 ```
 
 > 赛果次日才齐，建议每天上午拉一次。
+
+## 数据自动刷新（GitHub Actions）
+
+仓库里带了一个定时任务 `.github/workflows/refresh-data.yml`：**每 30 分钟**拉一次官方数据，有变化就自动提交回 `main`。
+
+```
+cron */30 * * * *
+  ├─ node fetch_official.js      # 抓澳客 + 体彩接口，写 data.js
+  ├─ node scripts/verify-data.js # 结构校验，不通过直接红
+  └─ git diff 有变化才 commit & push
+```
+
+所以 **Pages 上的演示站数据也是最新的**，不需要你本地开着服务。
+
+页面顶栏显示「数据更新于 11-12 21:45（1 分钟前）」，来自 `data.js` 顶层 `meta.updatedAt`。这个时间戳由抓取脚本每次写盘时注入，鼠标悬停能看到完整 ISO 时间与总场次。
+
+### 赔率合并规则（踩过的坑）
+
+抓取脚本里有个 `mergeOdds(base, p)`：
+
+| 场次状态 | 行为 |
+|---|---|
+| 已完场（有 `result`） | **保留终盘赔率，绝不覆盖** |
+| 未开赛且本地无赔率 | 直接用新抓到的 |
+| 未开赛且本地有赔率 | 只更新 `h/d/a` 三个主盘，`rq/tg/hf/sc/sxds` 保留 |
+
+早期版本在未开赛时用澳客列表页的 `{h,d,a}` **整体替换**，把体彩接口灌进来的让球、总进球、半全场、比分玩法全抹掉（data.js 从 83827B 缩到 61597B）。`scripts/verify-data.js` 现在会在「有赔率但让球玩法为 0 场」时直接判红，防止再犯。
 
 ## 演示模式怎么工作的
 
@@ -234,6 +267,8 @@ node server.js
 | 登录后立刻掉线 | 服务重启 | session 在内存，重启后需重新登录 |
 | 演示站点了「更新」没反应 | 静态快照没有后端 | 正常行为，按钮已置灰 |
 | `/users/xxx.json` 打不开 | 显式 404 保护 | 正常，用户数据不经静态托管暴露 |
+| 数据时间戳一直是旧的 | Actions 没跑或抓取失败 | Actions 页看 refresh-data 最近一次 run，或本地 `node fetch_official.js` |
+| data.js 突然变小 | 玩法赔率被整体覆盖 | 跑 `node scripts/verify-data.js`，看是否报「丢失让球玩法赔率」 |
 
 ## 依赖
 
@@ -244,4 +279,4 @@ node server.js
 ## 其他项目
 
 - [永劫无间 · 技能随机转盘](https://aq18270592902-cloud.github.io/naraka-skill-spinner/) —— 抽英雄 / F 技能 / V 奥义，纯前端转盘，断网也能转
-- [竞足预测汇总](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary) —— 官方赛程赛果 + 多源预测对比 + 命中率复盘
+- [竞足预测汇总](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary) —— 官方赛程赛果 + 多源预测对比 + 命中率复盘（就是本仓库，[部署文档](DEPLOY.md)）
