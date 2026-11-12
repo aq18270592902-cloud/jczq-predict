@@ -55,6 +55,12 @@ jobs:
             console.log("OK PWA 资源完整，manifest name=" + mf.name);
           '
 
+      - name: 数据完整性
+        run: node scripts/verify-data.js
+
+      - name: 部署脚本语法
+        run: bash -n deploy/install.sh && echo "OK deploy/install.sh"
+
       - name: 启动服务并冒烟
         run: |
           node server.js &
