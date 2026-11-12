@@ -17,7 +17,11 @@
 <meta name="twitter:title" content="竞足预测汇总">
 <meta name="twitter:description" content="官方赛程赛果 + 多源预测对比 + 投注方案 + 命中率复盘。">
 <meta name="twitter:image" content="https://aq18270592902-cloud.github.io/jczq-predict/docs/screenshots/01-summary.png">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="竞足汇总">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -245,5 +249,12 @@
 </script>
 <script src="data.js"></script>
 <script src="app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
 </body>
 </html>
