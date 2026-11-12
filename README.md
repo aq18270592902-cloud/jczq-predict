@@ -17,7 +17,7 @@
 > 演示站是静态快照（浏览器里跑，数据只读），用来先看界面长什么样。
 > 自动拉数据、账号同步、导出这些要本地 `node server.js` 才有。
 >
-> 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。
+> 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。默认对外端口 **8082**（80 与 8080 已被同机别的站点占用，脚本会自动往后找空闲端口），Node 进程监听 `127.0.0.1:8765`。
 
 ## 快捷入口
 
@@ -261,7 +261,7 @@ node server.js
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| 端口占用无反应 | 已有实例在跑 | 服务遇到 `EADDRINUSE` 静默退出，先 `taskkill /F /IM node.exe` |
+| 端口占用无反应 | 已有实例在跑 | 服务遇到 `EADDRINUSE` 静默退出，先 `taskkill /F /IM node.exe`；Linux 上 `ss -lntp | grep 8765` 看谁占着 |
 | 页面数据不更新 | 抓取失败 | `/api/status` 看 `lastOk`，手动跑 `node fetch_official.js` 看报错 |
 | 中文乱码 | GBK 未解码 | 确认走的是 `TextDecoder('gbk')` 分支，不是 `r.text()` |
 | 登录后立刻掉线 | 服务重启 | session 在内存，重启后需重新登录 |
