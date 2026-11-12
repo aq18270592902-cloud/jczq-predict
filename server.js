@@ -26,6 +26,17 @@ const DATA_KEYS = new Set(['myFinal', 'customModels', 'preds', 'renames', 'order
 const MAX_BODY = 5 * 1024 * 1024; /* 5MB */
 const SESSION_MAX_AGE = 30 * 24 * 3600; /* 30 天（秒） */
 
+/* ---- 部署配置：默认只监听本机，管理接口需 Token ---- */
+const PORT = Number(process.env.PORT || 8765);
+const HOST = process.env.HOST || '127.0.0.1';
+const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '').trim();
+/* 对外监听却没设 Token 时，启动即拒绝，避免管理接口裸奔 */
+if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !ADMIN_TOKEN) {
+  console.error('[fatal] HOST=' + HOST + ' 但未设置 ADMIN_TOKEN，拒绝启动。');
+  console.error('        设置方式：set ADMIN_TOKEN=随机串 && node server.js');
+  process.exit(1);
+}
+
 /* 启动时确保 users/ 目录存在 */
 try { fs.mkdirSync(USERS_DIR, { recursive: true }); } catch (e) { /* 已存在或无权限 */ }
 
@@ -164,10 +175,21 @@ const srv = http.createServer(async (q, s) => {
   }
 
   if (p === '/api/update') {
+    /* 鉴权：本机回环直接放行（页面上的按钮要能用）；外部来源必须带对 ADMIN_TOKEN */
+    const fromLoopback = /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(q.socket.remoteAddress || '');
+    const token = String(q.headers['x-admin-token'] || '');
+    if (!fromLoopback) {
+      if (!ADMIN_TOKEN) {
+        return sendJson(s, 403, { ok: false, err: '未配置 ADMIN_TOKEN，仅允许本机调用 /api/update' });
+      }
+      const a = Buffer.from(token), b = Buffer.from(ADMIN_TOKEN);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        return sendJson(s, 403, { ok: false, err: 'X-Admin-Token 无效' });
+      }
+    }
     const date = u.searchParams.get('date') || '';
-    s.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     const r = await doUpdate(date);
-    return s.end(JSON.stringify(r.skipped ? { ok: true, busy: true } : r));
+    return sendJson(s, 200, r.skipped ? { ok: true, busy: true } : r);
   }
 
   /* ---- 注册：创建用户文件 + 设置 session cookie ---- */
@@ -239,7 +261,17 @@ const srv = http.createServer(async (q, s) => {
   }
 
   let fp = p === '/' ? '/index.html' : p;
-  const f = path.join(root, decodeURIComponent(fp));
+  let decoded;
+  try { decoded = decodeURIComponent(fp); } catch (e) { s.writeHead(400); return s.end('400'); }
+  /* 路径穿越防护：解析后必须仍在项目根目录内 */
+  const f = path.resolve(root, '.' + decoded);
+  if (f !== root && !f.startsWith(root + path.sep)) {
+    s.writeHead(403); return s.end('403');
+  }
+  /* users/ 目录与 keys.json 禁止通过静态服务访问 */
+  if (f.startsWith(path.join(root, 'users') + path.sep) || f === path.join(root, 'keys.json')) {
+    s.writeHead(404); return s.end('404');
+  }
   fs.readFile(f, (e, d) => {
     if (e) { s.writeHead(404); return s.end('404'); }
     s.writeHead(200, {
@@ -253,4 +285,7 @@ srv.on('error', (e) => {
   if (e.code === 'EADDRINUSE') process.exit(0); /* 已有实例在跑，静默退出 */
   throw e;
 });
-srv.listen(8765, '0.0.0.0', () => console.log('serving on http://0.0.0.0:8765'));
+srv.listen(PORT, HOST, () => {
+  console.log('竞足预测汇总 已启动: http://' + HOST + ':' + PORT);
+  console.log('管理接口鉴权: ' + (ADMIN_TOKEN ? 'ADMIN_TOKEN 已配置' : '未配置，仅本机可调用 /api/update'));
+});
