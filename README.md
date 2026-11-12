@@ -4,6 +4,7 @@
 
 <p>
   <a href="https://aq18270592902-cloud.github.io/jczq-predict/"><img alt="在线演示" src="https://img.shields.io/badge/在线演示-GitHub%20Pages-2ea44f?style=flat-square&logo=githubpages&logoColor=white"></a>
+  <a href="https://github.com/aq18270592902-cloud/jczq-predict/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/aq18270592902-cloud/jczq-predict/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="依赖" src="https://img.shields.io/badge/%E4%BE%9D%E8%B5%96-0-4c8bf5?style=flat-square">
   <img alt="数据" src="https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E4%BB%85%E5%AD%98%E6%9C%AC%E6%9C%BA-8957e5?style=flat-square">
