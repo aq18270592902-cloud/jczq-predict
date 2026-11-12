@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 语法检查 + 冒烟
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 语法检查
+        run: |
+          for f in app.js server.js fetch_official.js data.js; do
+            node --check "$f" && echo "OK  $f"
+          done
+
+      - name: 启动服务并冒烟
+        run: |
+          node server.js &
+          SRV=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8765/api/status > /dev/null; then break; fi
+            sleep 0.5
+          done
+
+          echo "--- /api/status ---"
+          curl -s http://127.0.0.1:8765/api/status | head -c 300; echo
+
+          echo "--- index.html ---"
+          curl -s -o /tmp/idx.html -w "status=%{http_code} bytes=%{size_download}\n" http://127.0.0.1:8765/
+
+          echo "--- 静态资源 ---"
+          for p in app.js style.css data.js; do
+            curl -s -o /dev/null -w "$p status=%{http_code}\n" "http://127.0.0.1:8765/$p"
+          done
+
+          echo "--- 敏感路径必须 404 ---"
+          for p in users/13800138000.json keys.json .env; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8765/$p")
+            echo "$p -> $code"
+            test "$code" = "404" || { echo "FAIL: $p 应返回 404，实际 $code"; kill $SRV; exit 1; }
+          done
+
+          echo "--- 未登录访问 /api/data 必须 401 ---"
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8765/api/data)
+          echo "GET /api/data -> $code"
+          test "$code" = "401" || { echo "FAIL: 未登录应 401，实际 $code"; kill $SRV; exit 1; }
+
+          kill $SRV
+          echo "冒烟通过"
