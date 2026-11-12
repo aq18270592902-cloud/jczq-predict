@@ -89,7 +89,9 @@ jczq-predict/
 ├─ docs/screenshots/  # README 用的界面截图
 ├─ icons/             # 180 / 192 / 512 三种尺寸的站点图标
 ├─ manifest.webmanifest  # PWA 清单：可「添加到主屏幕」
-├─ sw.js              # Service Worker：离线缓存静态资源
+├─ sw.js              # Service Worker：页面 network-first，app/data/css 走 stale-while-revalidate
+├─ robots.txt         # 允许抓取，屏蔽 /api/ 与用户数据
+├─ sitemap.xml        # 站点地图
 ├─ users/             # 用户数据，含密码哈希，已 gitignore
 ├─ 启动网页服务.vbs
 └─ 拉取官方数据.bat
