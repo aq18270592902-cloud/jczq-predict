@@ -21,6 +21,11 @@
   </div>
 </header>
 
+<div id="demoBar" class="demo-bar" hidden>
+  <b>演示模式</b> · 这是部署在 GitHub Pages 上的静态快照，数据为内置示例，编辑只存在你自己的浏览器里。
+  想用完整功能（自动拉官方数据、账号同步）：<code>node server.js</code> 后打开 http://127.0.0.1:8765
+</div>
+
 <nav class="tabs">
   <button class="tab active" data-tab="summary"><span class="tab-txt">每日汇总</span></button>
   <button class="tab" data-tab="compare"><span class="tab-txt">模型对比</span></button>
@@ -221,6 +226,11 @@
   </div>
 </div>
 
+<script>
+  /* 部署到 GitHub Pages 时没有 Node 后端，自动切到只读演示模式：
+     数据用 localStorage 承载，不登录、不请求 /api/*，方便直接看效果。 */
+  if (/(^|\.)github\.io$/.test(location.hostname) || /[?&]demo=1/.test(location.search)) window.STATIC_DEMO = true;
+</script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>
