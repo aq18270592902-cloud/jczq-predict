@@ -1,0 +1,88 @@
+name: deploy
+
+# 推送到 main 后自动部署到自己的服务器。
+# 需要的仓库 Secrets：SSH_HOST / SSH_USER / SSH_PASS
+# 没配 Secrets 时自动跳过，不会报红。
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "data.js"          # 数据自动刷新不触发重部署
+      - "docs/**"
+      - "README.md"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-jczq
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - id: check
+        env:
+          H: ${{ secrets.SSH_HOST }}
+          U: ${{ secrets.SSH_USER }}
+          P: ${{ secrets.SSH_PASS }}
+        run: |
+          if [ -n "$H" ] && [ -n "$U" ] && [ -n "$P" ]; then
+            echo "ok=1" >> $GITHUB_OUTPUT
+            echo "Secrets 齐全，开始部署到 $H"
+          else
+            echo "ok=0" >> $GITHUB_OUTPUT
+            echo "::notice::未配置 SSH_HOST / SSH_USER / SSH_PASS，跳过部署"
+          fi
+
+  deploy:
+    needs: guard
+    if: needs.guard.outputs.ok == '1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 语法自检
+        run: |
+          node --check server.js
+          node --check app.js
+          node --check fetch_official.js
+          node scripts/verify-data.js
+
+      - name: 装 sshpass 与 rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: 同步代码到服务器
+        env:
+          SSHPASS: ${{ secrets.SSH_PASS }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          sshpass -e rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20" \
+            --exclude 'users/' --exclude '.git/' --exclude 'node_modules/' --exclude '.github/' \
+            --exclude 'deploy/' --exclude 'docs/' --exclude '.env' \
+            ./ "$USER@$HOST:/opt/jczq-predict/"
+
+      - name: 重启服务并自测
+        env:
+          SSHPASS: ${{ secrets.SSH_PASS }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$USER@$HOST" '
+            set -e
+            if [ ! -f /etc/systemd/system/jczq-predict.service ]; then
+              echo "首次部署：跑安装脚本"
+              bash /opt/jczq-predict/deploy/install.sh
+            else
+              chown -R jczq-predict:jczq-predict /opt/jczq-predict || true
+              systemctl restart jczq-predict
+            fi
+            sleep 3
+            systemctl is-active jczq-predict
+            curl -fsS http://127.0.0.1:8765/api/status > /dev/null && echo "api/status OK"
+          '
