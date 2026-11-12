@@ -11,7 +11,7 @@ APP_NAME="jczq-predict"
 APP_DIR="/opt/${APP_NAME}"
 APP_USER="${APP_NAME}"
 PORT="${PORT:-8765}"          # Node 进程监听的本机端口
-WEB_PORT="${WEB_PORT:-8080}"  # nginx 对外端口（80 留给 naraka 静态站）
+WEB_PORT="${WEB_PORT:-8082}"  # nginx 对外端口。80 是别的站点、8080 是 Next.js 应用、8081 留给 naraka，本站从 8082 起
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
@@ -73,16 +73,31 @@ systemctl enable --now "${APP_NAME}"
 
 say "4/4 配 nginx 反代（没装 nginx 就跳过）"
 if command -v nginx >/dev/null; then
-  # 端口冲突检查：conf.d 里已有别的站点占着同一个 listen 且 server_name 都是 _ 时，
-  # nginx 只会用先加载的那个，本站会变成「访问 8080 打开的是别的项目」。
-  for f in /etc/nginx/conf.d/*.conf; do
-    [ -e "$f" ] || continue
-    [ "$f" = "/etc/nginx/conf.d/${APP_NAME}.conf" ] && continue
-    if grep -qE "^[[:space:]]*listen[[:space:]]+${WEB_PORT}[[:space:]]*;" "$f"; then
-      printf '\033[1;33m[!]\033[0m %s 也监听了 %s，本站改用 %s\n' "$f" "$WEB_PORT" "$((WEB_PORT+1))"
-      WEB_PORT=$((WEB_PORT+1))
+  # 端口冲突检测，两层：
+  #   1) /etc/nginx/conf.d 里别的站点已 listen 同端口且 server_name 都是 _ → nginx 只用先加载的，本站会「访问这个端口打开的是别的项目」
+  #   2) 端口被任何非 nginx 进程占着（Next.js / docker / pm2 / 别人的 node）→ nginx -t 过，reload 直接 EADDRINUSE
+  # 两层任一命中就往后找，最多 20 个端口。
+  port_taken() {
+    local p="$1" f
+    for f in /etc/nginx/conf.d/*.conf; do
+      [ -e "$f" ] || continue
+      [ "$f" = "/etc/nginx/conf.d/${APP_NAME}.conf" ] && continue
+      grep -qE "^[[:space:]]*listen[[:space:]]+${p}([[:space:]]|;)" "$f" && return 0
+    done
+    if command -v ss >/dev/null 2>&1; then
+      ss -lntH 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$" && return 0
     fi
+    return 1
+  }
+  WANT_WEB="$WEB_PORT"
+  i=0
+  while port_taken "$WEB_PORT"; do
+    i=$((i+1))
+    [ "$i" -gt 20 ] && die "从 ${WANT_WEB} 起连试 20 个端口都被占用，用 WEB_PORT=<端口> 手动指定一个空闲的"
+    printf '\033[1;33m[!]\033[0m 端口 %s 已被占用，试 %s\n' "$WEB_PORT" "$((WEB_PORT+1))"
+    WEB_PORT=$((WEB_PORT+1))
   done
+  [ "$WEB_PORT" != "$WANT_WEB" ] && printf '\033[1;32m==>\033[0m 实际使用端口：%s（原定 %s 被占）\n' "$WEB_PORT" "$WANT_WEB"
   cat > /etc/nginx/conf.d/${APP_NAME}.conf <<EOF
 server {
     listen ${WEB_PORT};
