@@ -24,6 +24,11 @@
     });
     curDate = best;
   }
+  /* 深链：?date=2026-11-13 直接落到那一天（可分享给队友看某一天的盘） */
+  (function () {
+    const d = new URLSearchParams(location.search).get("date");
+    if (d && DATA.days[d]) curDate = d;
+  })();
 
   /* ---------- 用户态：登录后 currentUser 非 null 时，loadJSON 走 userDataCache；未登录走 localStorage 兜底 ---------- */
   let currentUser = null;
@@ -232,7 +237,11 @@
     btn.addEventListener("click", () => {
       activateTab(btn.dataset.tab);
       /* 记住当前页签，刷新后停在原处 */
-      try { history.replaceState(null, "", "?tab=" + btn.dataset.tab); } catch (e) {}
+      try {
+        const q = new URLSearchParams(location.search);
+        q.set("tab", btn.dataset.tab);
+        history.replaceState(null, "", "?" + q.toString());
+      } catch (e) {}
     });
   });
   /* 深链：?tab=compare|bets|stats 直接落到对应页签（README 里可给直达链接） */
@@ -1785,6 +1794,53 @@
   });
 
   function renderAll() { renderSummary(); renderCompare(); renderBets(); renderStats(); }
+
+  /* 复制当前视图链接：带上页签与日期，队友点开看到同一页同一天 */
+  function currentTab() {
+    const b = document.querySelector(".tab.active");
+    return (b && b.dataset.tab) || "summary";
+  }
+  function viewURL() {
+    const q = new URLSearchParams();
+    q.set("tab", currentTab());
+    if (curDate) q.set("date", curDate);
+    if (window.STATIC_DEMO) q.set("demo", "1");
+    return location.origin + location.pathname + "?" + q.toString();
+  }
+  function fallbackCopyText(text, done) {
+    /* 剪贴板不可用时：不弹阻塞式 prompt，直接把链接摊在一个可选中输入框里 */
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) { done(); return; }
+    const box = document.createElement("div");
+    box.style.cssText = "position:fixed;left:50%;top:76px;transform:translateX(-50%);z-index:9999;background:#fff;border:1px solid #d8dee8;border-radius:12px;padding:12px 14px;box-shadow:0 12px 40px rgba(15,23,42,.16);max-width:460px;width:88%";
+    box.innerHTML = '<div style="font-size:13px;color:#475569;margin-bottom:8px">自动复制被浏览器拦了，手动复制这条链接：</div>';
+    const inp = document.createElement("input");
+    inp.value = text; inp.readOnly = true;
+    inp.style.cssText = "width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d8dee8;border-radius:8px;font-size:12.5px;color:#1e293b";
+    const close = document.createElement("button");
+    close.textContent = "关闭";
+    close.style.cssText = "margin-top:10px;padding:6px 14px;border:1px solid #d8dee8;background:#f8fafc;border-radius:8px;cursor:pointer;font-size:12.5px";
+    close.onclick = () => box.remove();
+    box.appendChild(inp); box.appendChild(close);
+    document.body.appendChild(box);
+    inp.select();
+  }
+  (function () {
+    const btn = $("#btnShare");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const url = viewURL();
+      const done = () => { const old = btn.textContent; btn.textContent = "已复制 ✓"; setTimeout(() => (btn.textContent = old), 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopyText(url, done));
+      } else fallbackCopyText(url, done);
+    });
+  })();
 
   /* ============================================================
    * 登录注册：硬门禁遮罩 + 顶栏用户区 + 服务器数据加载
