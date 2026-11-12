@@ -22,24 +22,33 @@ jobs:
     outputs:
       ok: ${{ steps.check.outputs.ok }}
     steps:
-      - id: check
+      - name: 检查 Secrets 与服务器可达性
+        id: check
         env:
           H: ${{ secrets.SSH_HOST }}
           U: ${{ secrets.SSH_USER }}
           P: ${{ secrets.SSH_PASS }}
         run: |
-          if [ -n "$H" ] && [ -n "$U" ] && [ -n "$P" ]; then
-            echo "ok=1" >> $GITHUB_OUTPUT
-            echo "Secrets 齐全，开始部署到 $H"
-          else
+          if [ -z "$H" ] || [ -z "$U" ] || [ -z "$P" ]; then
             echo "ok=0" >> $GITHUB_OUTPUT
             echo "::notice::未配置 SSH_HOST / SSH_USER / SSH_PASS，跳过部署"
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          if SSHPASS="$P" sshpass -e ssh -o StrictHostKeyChecking=accept-new \
+               -o ConnectTimeout=12 "$U@$H" 'echo alive' 2>/dev/null | grep -q alive; then
+            echo "ok=1" >> $GITHUB_OUTPUT
+            echo "服务器 $H 可达，开始部署"
+          else
+            echo "ok=0" >> $GITHUB_OUTPUT
+            echo "::warning::服务器 $H 的 22 端口无响应（sshd 未就绪或实例已停机），本次跳过部署；恢复后到 Actions 页点 Run workflow 重跑即可。"
           fi
 
   deploy:
     needs: guard
     if: needs.guard.outputs.ok == '1'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
