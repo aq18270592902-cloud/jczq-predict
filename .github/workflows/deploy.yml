@@ -10,6 +10,10 @@ on:
       - "data.js"          # 数据自动刷新不触发重部署
       - "docs/**"
       - "README.md"
+  schedule:
+    # 每小时探一次服务器：不通就跳过（不报红），通了就自动部署。
+    # 服务器重启/开机后无需人工点 Run workflow。
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
