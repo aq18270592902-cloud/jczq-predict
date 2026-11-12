@@ -455,6 +455,14 @@ function mergeOdds(base, p) {
   }
   if (orphan) log('清理错位场次 ' + orphan + ' 条');
 
+  /* 记录本次刷新时间，页面上直接显示「数据更新于 …」，用户一眼能判断数据新不新 */
+  d.meta = Object.assign({}, d.meta || {}, {
+    updatedAt: new Date().toISOString(),
+    sources: ['okooo.com/jingcai', 'sporttery.cn'],
+    matches: Object.values(d.days).reduce((n, day) => n + (day.matches || []).length, 0),
+    days: Object.keys(d.days).length
+  });
+
   saveAppData(d);
-  log('已写回 ' + DATA_FILE);
+  log('已写回 ' + DATA_FILE + '（' + d.meta.matches + ' 场 / ' + d.meta.days + ' 个业务日）');
 })();
