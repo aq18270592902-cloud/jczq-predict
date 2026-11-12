@@ -2114,8 +2114,26 @@
       if (el) el.textContent = "演示模式";
       const lo = document.getElementById("btnLogout");
       if (lo) lo.style.display = "none";
+      /* 演示模式下按钮改成「载入最新数据」：Actions 每 30 分钟重写 data.js，
+       * 但 Service Worker 对 data.js 走 stale-while-revalidate（先给缓存再后台更新），
+       * 所以直接 reload 第一次仍是旧数据。这里先 update() 注册，再带 cache-bust 参数重载。 */
       const sync = document.getElementById("btnSync");
-      if (sync) { sync.textContent = "静态快照 · 数据不自动更新"; sync.disabled = true; }
+      if (sync) {
+        sync.textContent = "↻ 载入最新数据";
+        sync.disabled = false;
+        sync.title = "官方赛程/赛果/赔率由 GitHub Actions 每 30 分钟自动刷新；点这里跳过 Service Worker 缓存直接取最新";
+        sync.addEventListener("click", async () => {
+          sync.disabled = true;
+          sync.textContent = "正在取最新…";
+          try {
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              const rs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(rs.map((r) => r.update().catch(() => {})));
+            }
+          } catch (e) { /* 无 SW 或浏览器不支持，直接重载即可 */ }
+          location.replace(location.pathname + "?demo=1&tab=" + currentTab() + "&date=" + curDate + "&_=" + Date.now());
+        });
+      }
       const bar = document.getElementById("demoBar");
       if (bar) bar.hidden = false;
       runAppInit();
