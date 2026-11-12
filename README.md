@@ -25,6 +25,7 @@
 | 模型对比（多源预测并排 + 分歧标色） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=compare) |
 | 投注方案（选场 → 过关 → 结算记录） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets) |
 | 历史统计（命中率 + 每日复盘） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=stats) |
+| 某一天的盘（示例：2026-11-13 周五 8 场） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary&date=2026-11-13) |
 
 ## 界面
 
@@ -95,6 +96,16 @@ jczq-predict/
 ```
 
 > 早期的 `keys.json`（卡密文件）已删除，账号体系改成手机号 + 密码，密码用 `scrypt` 加盐存 `users/`。
+
+## 复制视图链接
+
+右上角工具条有 **复制视图链接**：把「当前页签 + 当前日期」编成一条 URL，例如
+
+```
+https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets&date=2026-11-13
+```
+
+发给队友，对方点开直接落在同一页同一天。切换页签时地址栏会同步更新（`?tab=compare&date=2026-11-11`），刷新不会跳回第一页。
 
 ## 数据来源
 
