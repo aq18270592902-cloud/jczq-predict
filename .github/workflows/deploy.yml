@@ -39,13 +39,25 @@ jobs:
             exit 0
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-          if SSHPASS="$P" sshpass -e ssh -o StrictHostKeyChecking=accept-new \
-               -o ConnectTimeout=12 "$U@$H" 'echo alive' 2>/dev/null | grep -q alive; then
+          # 服务器 sshd 偶发「TCP 通但 banner 迟迟不发」（阿里云低配实例负载高时会这样），
+          # 单次探测容易误判成"不通"。这里给 3 次机会、每次 20s，任一次成功就算通。
+          ok=0
+          for i in 1 2 3; do
+            if SSHPASS="$P" sshpass -e ssh -o StrictHostKeyChecking=accept-new \
+                 -o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
+                 -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+                 "$U@$H" 'echo alive' 2>/dev/null | grep -q alive; then
+              ok=1; echo "第 $i 次探测成功"; break
+            fi
+            echo "第 $i 次探测失败，5 秒后重试"
+            sleep 5
+          done
+          if [ "$ok" = "1" ]; then
             echo "ok=1" >> $GITHUB_OUTPUT
             echo "服务器 $H 可达，开始部署"
           else
             echo "ok=0" >> $GITHUB_OUTPUT
-            echo "::warning::服务器 $H 的 22 端口无响应（sshd 未就绪或实例已停机），本次跳过部署；恢复后到 Actions 页点 Run workflow 重跑即可。"
+            echo "::warning::服务器 $H 三次探测都没拿到 SSH 会话（sshd 未就绪、密码不对、或实例已停机），本次跳过部署；恢复后到 Actions 页点 Run workflow 重跑即可。"
           fi
 
   deploy:
