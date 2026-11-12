@@ -2093,6 +2093,8 @@
     applySavedPreds();
     purgeOldModel();
     renderDataStamp();
+    /* 页面长期开着时，时间戳也要跟着走，否则「1 分钟前」会一直冻在那儿 */
+    if (!window.__stampTimer) window.__stampTimer = setInterval(renderDataStamp, 60000);
     if (window.STATIC_DEMO) { seedDemoModels(); seedDemoBets(); }
     /* 启动官方数据自动轮询 + 初次渲染（静态演示模式没有后端，不轮询） */
     if (!window.STATIC_DEMO) {
