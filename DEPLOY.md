@@ -7,19 +7,26 @@
 | **A · 手动一条命令** | 第一次部署、想马上看到效果 | 能 ssh 上去 | 改完代码再跑一次 `bash deploy/install.sh` |
 | **B · GitHub Actions 自动** | 以后不想管 | 仓库 Secrets 三个 | push 到 main 自动部署 |
 
-**两个站同机部署时的端口分配**（默认值，可用环境变量覆盖）：
+**端口分配**（默认值，可用环境变量覆盖）：
 
-| 站点 | 对外端口 | 变量 | 本机监听 |
-|---|---|---|---|
-| naraka-skill-spinner（纯静态） | **80** | `PORT=80` | nginx 直接读盘 |
-| jczq-predict（Node 服务） | **8080** | `WEB_PORT=8080` | Node 在 `127.0.0.1:8765`，nginx 反代 |
+| 站点 | 对外端口 | 变量 | 本机监听 | 说明 |
+|---|---|---|---|---|
+| 已有站点（视频专区） | 80 | — | — | 已经占着，不要动 |
+| 已有站点（Next.js） | 8080 | — | — | 已经占着，不要动 |
+| naraka-skill-spinner（纯静态） | **8081** | `PORT=8081` | nginx 直接读盘 | |
+| jczq-predict（Node 服务） | **8082** | `WEB_PORT=8082` | Node 在 `127.0.0.1:8765`，nginx 反代 | |
 
 所以装完两个站，访问地址是：
 
-- 转盘 → `http://<服务器IP>/`
-- 竞足 → `http://<服务器IP>:8080/`
+- 转盘 → `http://<服务器IP>:8081/`
+- 竞足 → `http://<服务器IP>:8082/`
 
-`install.sh` 会先扫 `/etc/nginx/conf.d/*.conf`，发现 8080 已被别的站点占用就自动退到 8081，并打印实际端口。
+`install.sh` 装之前做两层检测，任一命中就自动往后找空闲端口（最多试 20 个）并打印实际值：
+
+1. 扫 `/etc/nginx/conf.d/*.conf`，看别的站点是否已经 `listen` 同一个端口（都写 `server_name _` 时 nginx 只用先加载的那个，本站会变成「打开端口看到的是别人」）；
+2. 用 `ss -lntH` 看端口是否已被任何进程占着（Next.js / docker / pm2 / 别人的 node —— 这类冲突 `nginx -t` 查不出来，只会在 reload 时 `EADDRINUSE`）。
+
+想指定端口就直接 `sudo WEB_PORT=9000 bash deploy/install.sh`。
 
 ---
 
@@ -61,9 +68,9 @@ sudo bash deploy/install.sh
 1. 建系统用户 `jczq-predict`（不给登录 shell）
 2. 把代码同步到 `/opt/jczq-predict`（**保留服务器上已有的 `users/` 和 `.env`**）
 3. 写 `/etc/systemd/system/jczq-predict.service` 并启动，设了开机自启
-4. 写 `/etc/nginx/conf.d/jczq-predict.conf`，对外监听 **8080**，反代到 `127.0.0.1:8765`，reload nginx
+4. 写 `/etc/nginx/conf.d/jczq-predict.conf`，对外监听 **8082**（被占用则自动顺延），反代到 `127.0.0.1:8765`，reload nginx
 
-跑完打开 `http://<服务器IP>:8080/` 就是成品。想换成 80 端口就 `sudo WEB_PORT=80 bash deploy/install.sh`。
+跑完打开 `http://<服务器IP>:8082/` 就是成品。想换端口就 `sudo WEB_PORT=<端口> bash deploy/install.sh`。
 
 ### 常用命令
 
@@ -72,7 +79,7 @@ systemctl status jczq-predict --no-pager   # 看状态
 journalctl -u jczq-predict -f              # 看实时日志
 systemctl restart jczq-predict             # 重启
 curl -s http://127.0.0.1:8765/api/status   # 本机自测
-curl -sI http://127.0.0.1:8080/            # 经 nginx 自测
+curl -sI http://127.0.0.1:8082/            # 经 nginx 自测（端口以 install.sh 打印的为准）
 ```
 
 ---
@@ -122,7 +129,7 @@ curl -s http://127.0.0.1:8765/api/update
 # 2) 从外网、已登录浏览器里点页面上的「↻ 更新比赛数据」按钮（走 cookie 登录态）
 
 # 3) 从外网用 Token（需要先配 ADMIN_TOKEN）
-curl -s -H "X-Admin-Token: <你的token>" http://<服务器IP>:8080/api/update
+curl -s -H "X-Admin-Token: <你的token>" http://<服务器IP>:8082/api/update
 ```
 
 `/api/update` 的放行条件是**三选一**：
@@ -168,7 +175,7 @@ sudo systemctl restart jczq-predict
 | 数据一直不更新 | 服务器访问不了 okooo.com | `curl -I https://www.okooo.com/jingcai/` 验证；不行就换网络或代理 |
 | `deploy` workflow 一直 skipped | 没配 Secrets | 按上面方式 B 第 1 步配齐 |
 | `EADDRINUSE` 静默退出 | 已有实例在跑 | 正常行为，先 `systemctl stop jczq-predict` 再启动 |
-| 访问 8080 打开的是别的项目 | `conf.d` 里另一个站点也 `listen 8080` 且 `server_name _` | 重跑 `install.sh`（会自动换端口），或手改 `listen` |
+| 访问端口打开的是别的项目 | `conf.d` 里另一个站点也 `listen` 同端口且 `server_name _` | 重跑 `install.sh`（会自动换端口并打印实际值），或手改 `listen` |
 | 点「更新比赛数据」返回 403 | 未登录且没配 ADMIN_TOKEN | 登录后再点，或在 `.env` 配 `ADMIN_TOKEN` |
 | 外网能直接触发 `/api/update` | unit 里缺 `TRUST_PROXY=1` | `sed -i '/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1' /etc/systemd/system/jczq-predict.service && systemctl daemon-reload && systemctl restart jczq-predict` |
 
