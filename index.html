@@ -41,8 +41,8 @@
 </header>
 
 <div id="demoBar" class="demo-bar" hidden>
-  <b>演示模式</b> · 这是部署在 GitHub Pages 上的静态快照，数据为内置示例，编辑只存在你自己的浏览器里。
-  想用完整功能（自动拉官方数据、账号同步）：<code>node server.js</code> 后打开 http://127.0.0.1:8765
+  <b>演示模式</b> · 官方赛程 / 赛果 / 赔率由 GitHub Actions 每 30 分钟自动刷新，你看到的<b>就是最新数据</b>；
+  你的预测与投注方案只存在本机浏览器里。想用账号同步：<code>node server.js</code> 后打开 http://127.0.0.1:8765
 </div>
 
 <nav class="tabs">
@@ -55,6 +55,7 @@
 <div class="export-bar">
   <button id="btnSync" class="sync-btn">↻ 更新比赛数据</button>
   <span id="syncMsg" class="bar-hint"></span>
+  <span id="dataStamp" class="bar-hint" title="官方数据最近一次自动刷新时间（GitHub Actions 每 30 分钟一次）"></span>
   <span style="flex:1"></span>
   <button id="btnShare" title="把当前页签 + 当前日期复制成一条链接">复制视图链接</button>
   <button id="btnExpExcel">导出 Excel</button>
