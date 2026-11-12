@@ -1,7 +1,7 @@
 /* =========================================================
  * 竞足预测汇总 - 本地服务
  * 1) 静态托管项目目录（http://0.0.0.0:8765）
- * 2) /api/update        手动/静默触发官方数据拉取（不保护，任意访问者可触发）
+ * 2) /api/update        手动/静默触发官方数据拉取（已登录用户 / 本机 / 带 X-Admin-Token 才放行）
  * 3) /api/status        查询更新状态（前端决定是否提示刷新）
  * 4) /api/register      注册新用户（写 users/{手机号}.json + 设置 sid cookie）
  * 5) /api/login         校验密码 + 设置 sid cookie
@@ -30,7 +30,23 @@ const SESSION_MAX_AGE = 30 * 24 * 3600; /* 30 天（秒） */
 const PORT = Number(process.env.PORT || 8765);
 const HOST = process.env.HOST || '127.0.0.1';
 const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '').trim();
+/* 前面有 nginx 反代时所有连接都来自 127.0.0.1，必须靠 X-Forwarded-For 还原真实来源 */
+const TRUST_PROXY = String(process.env.TRUST_PROXY || '').trim() === '1';
 /* 对外监听却没设 Token 时，启动即拒绝，避免管理接口裸奔 */
+/* 还原真实客户端 IP：直连时就是 socket 地址；TRUST_PROXY=1 时取代理头最后一个值 */
+function clientIp(q) {
+  const direct = String(q.socket.remoteAddress || '');
+  if (!TRUST_PROXY) return direct;
+  const xff = String(q.headers['x-forwarded-for'] || '').split(',').map(v => v.trim()).filter(Boolean);
+  const real = String(q.headers['x-real-ip'] || '').trim();
+  const ip = real || (xff.length ? xff[xff.length - 1] : '');
+  return ip || direct;
+}
+function isLoopback(ip) {
+  const s = String(ip || '').replace(/^::ffff:/, '');
+  return s === '127.0.0.1' || s === '::1' || s === 'localhost' || /^127./.test(s);
+}
+
 if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !ADMIN_TOKEN) {
   console.error('[fatal] HOST=' + HOST + ' 但未设置 ADMIN_TOKEN，拒绝启动。');
   console.error('        设置方式：set ADMIN_TOKEN=随机串 && node server.js');
@@ -175,17 +191,17 @@ const srv = http.createServer(async (q, s) => {
   }
 
   if (p === '/api/update') {
-    /* 鉴权：本机回环直接放行（页面上的按钮要能用）；外部来源必须带对 ADMIN_TOKEN */
-    const fromLoopback = /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(q.socket.remoteAddress || '');
+    /* 鉴权三选一：本机直连 / 已登录用户 / 正确的 X-Admin-Token。
+       页面上的「↻ 更新比赛数据」按钮走登录态，所以服务器上登录后照样能点。 */
+    const ip = clientIp(q);
     const token = String(q.headers['x-admin-token'] || '');
-    if (!fromLoopback) {
-      if (!ADMIN_TOKEN) {
-        return sendJson(s, 403, { ok: false, err: '未配置 ADMIN_TOKEN，仅允许本机调用 /api/update' });
-      }
+    let allowed = isLoopback(ip) || !!getSessionPhone(q);
+    if (!allowed && ADMIN_TOKEN && token) {
       const a = Buffer.from(token), b = Buffer.from(ADMIN_TOKEN);
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-        return sendJson(s, 403, { ok: false, err: 'X-Admin-Token 无效' });
-      }
+      allowed = a.length === b.length && crypto.timingSafeEqual(a, b);
+    }
+    if (!allowed) {
+      return sendJson(s, 403, { ok: false, err: '需要登录，或带正确的 X-Admin-Token' });
     }
     const date = u.searchParams.get('date') || '';
     const r = await doUpdate(date);
@@ -287,5 +303,5 @@ srv.on('error', (e) => {
 });
 srv.listen(PORT, HOST, () => {
   console.log('竞足预测汇总 已启动: http://' + HOST + ':' + PORT);
-  console.log('管理接口鉴权: ' + (ADMIN_TOKEN ? 'ADMIN_TOKEN 已配置' : '未配置，仅本机可调用 /api/update'));
+  console.log('管理接口鉴权: ' + (ADMIN_TOKEN ? 'ADMIN_TOKEN 已配置' : '未配置') + ' / 已登录用户可调用 /api/update' + (TRUST_PROXY ? ' / TRUST_PROXY=1（按 X-Forwarded-For 还原来源）' : ''));
 });
