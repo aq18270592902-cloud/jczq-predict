@@ -15,14 +15,18 @@
   /* 默认选中今天：今天有数据就选今天，否则取最近日期 */
   const todayStr = new Date().toLocaleDateString("sv-CN"); /* YYYY-MM-DD */
   let curDate = dates.includes(todayStr) ? todayStr : (dates[0] || "");
-  /* 静态演示模式：默认落在「最终预测填得最满」的那一天，让访客一进来就看到有内容的对比表 */
+  /* 静态演示模式：默认落在「今天」——今天没场次才退到最终预测填得最满的历史日，
+     否则访客一进来永远停在老日期，会以为数据不更新。 */
   if (window.STATIC_DEMO) {
-    let best = curDate, bestN = -1;
-    dates.forEach((d) => {
-      const n = (DATA.days[d].matches || []).filter((m) => m.final && (m.final.wdl || m.final.tg || m.final.hf || m.final.sc)).length;
-      if (n > bestN) { bestN = n; best = d; }
-    });
-    curDate = best;
+    const todayHas = DATA.days[todayStr] && (DATA.days[todayStr].matches || []).length > 0;
+    if (!todayHas) {
+      let best = curDate, bestN = -1;
+      dates.forEach((d) => {
+        const n = (DATA.days[d].matches || []).filter((m) => m.final && (m.final.wdl || m.final.tg || m.final.hf || m.final.sc)).length;
+        if (n > bestN) { bestN = n; best = d; }
+      });
+      curDate = best;
+    }
   }
   /* 深链：?date=2026-11-13 直接落到那一天（可分享给队友看某一天的盘） */
   (function () {
@@ -734,7 +738,10 @@
       body += row("比分", entries.map(([k, v]) => chip(k, v, +v === hotV)).join(""));
     }
     let html = '<div class="d-card d-wide"><h4>官方赔率</h4>' + body;
-    if (o.upd) html += `<p class="d-foot">赔率更新：${esc(o.upd)}（数据随官方每2小时自动刷新）</p>`;
+    if (o.upd) {
+      const liveNote = m.live ? "（实时层已直连体彩官方接口，本场赔率随官方变动即时刷新）" : "（随官方数据自动刷新）";
+      html += `<p class="d-foot">赔率更新：${esc(o.upd)}${liveNote}</p>`;
+    }
     html += "</div>";
     return html;
   }
@@ -2060,24 +2067,60 @@
     if (out.length) bets = out.concat(bets);
   }
 
-  /* 数据新鲜度角标：显示 data.js 里记录的自动刷新时间，让访客一眼知道数据是不是最新的 */
+  /* 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前 */
+  function agoText(t) {
+    const mins = Math.round((Date.now() - t.getTime()) / 60000);
+    if (mins < 1) return "刚刚";
+    if (mins < 60) return mins + " 分钟前";
+    if (mins < 1440) return Math.round(mins / 60) + " 小时前";
+    return Math.round(mins / 1440) + " 天前";
+  }
+  function fmtCn(t) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return (t.getMonth() + 1) + "-" + pad(t.getDate()) + " " + pad(t.getHours()) + ":" + pad(t.getMinutes());
+  }
+
+  /* 数据新鲜度角标：静态底座（data.js 落盘时间）+ 体彩实时接口（浏览器直连拉取时间）两行分开显示，
+     让访客一眼分清「赔率是刚拉的」和「赛果是上次落盘的」。 */
   function renderDataStamp() {
     const el = document.getElementById("dataStamp");
-    if (!el) return;
     const meta = (DATA && DATA.meta) || {};
-    if (!meta.updatedAt) { el.textContent = ""; return; }
-    const t = new Date(meta.updatedAt);
-    if (isNaN(t.getTime())) { el.textContent = ""; return; }
-    const pad = (n) => String(n).padStart(2, "0");
-    const stamp = (t.getMonth() + 1) + "-" + pad(t.getDate()) + " " + pad(t.getHours()) + ":" + pad(t.getMinutes());
-    const mins = Math.round((Date.now() - t.getTime()) / 60000);
-    let ago;
-    if (mins < 1) ago = "刚刚";
-    else if (mins < 60) ago = mins + " 分钟前";
-    else if (mins < 1440) ago = Math.round(mins / 60) + " 小时前";
-    else ago = Math.round(mins / 1440) + " 天前";
-    el.textContent = "数据更新于 " + stamp + "（" + ago + "）";
-    el.title = "官方数据自动刷新时间：" + meta.updatedAt + "，共 " + (meta.matches || 0) + " 场 / " + (meta.days || 0) + " 个比赛日";
+    if (el) {
+      if (!meta.updatedAt) el.textContent = "";
+      else {
+        const t = new Date(meta.updatedAt);
+        if (isNaN(t.getTime())) el.textContent = "";
+        else {
+          el.textContent = "底座 " + fmtCn(t) + "（" + agoText(t) + "）";
+          if (meta.liveUpdatedAt) el.textContent += " · 官方 " + fmtCn(new Date(meta.liveUpdatedAt));
+          el.title = "静态底座落盘时间：" + meta.updatedAt + "，共 " + (meta.matches || 0) + " 场 / " + (meta.days || 0) + " 个比赛日";
+        }
+      }
+    }
+    renderLiveBadge();
+  }
+
+  /* 实时角标：读 boot.js 写下的 window.__LIVE */
+  function renderLiveBadge() {
+    const el = document.getElementById("liveBadge");
+    if (!el) return;
+    const live = window.__LIVE;
+    el.classList.remove("live-ok", "live-fail", "live-wait");
+    if (!live) { el.textContent = "实时：未拉取"; el.title = "体彩官方实时接口尚未拉取"; el.classList.add("live-wait"); return; }
+    if (!live.ok) {
+      el.textContent = "实时：失败（用底座数据）";
+      el.title = "体彩接口拉取失败：" + (live.error || "未知错误") + "；页面已回退到静态底座数据，不影响使用";
+      el.classList.add("live-fail");
+      return;
+    }
+    const t = new Date(live.fetchedAt);
+    const okTime = isNaN(t.getTime()) ? "" : "（" + agoText(t) + "）";
+    el.textContent = "实时 " + live.count + " 场 " + okTime;
+    el.classList.add("live-ok");
+    el.title = "体彩官方接口 " + live.source + "\n本场次日期：" + live.businessDate
+      + "\n官方最后更新：" + (live.lastUpdateTime || "-")
+      + "\n本地拉取：" + live.fetchedAt
+      + "\n新增 " + live.added + " 场 / 刷新 " + live.updated + " 场";
   }
 
   function runAppInit() {
@@ -2100,6 +2143,24 @@
     if (!window.STATIC_DEMO) {
       setTimeout(autoCheck, 3000);
       setInterval(autoCheck, POLL_MIN * 60000);
+    } else if (typeof window.__REFRESH_LIVE === "function") {
+      /* boot.js 每次拉完实时（成功或失败）都会发 live-updated，这里只负责重绘 */
+      window.addEventListener("live-updated", () => { renderDataStamp(); renderAll(); });
+      /* 演示站没有后端，靠浏览器直连体彩接口：每 6 分钟静默重拉一次赔率。
+         页面隐藏时不打请求，切回前台立刻补一次，省流量也不浪费接口。 */
+      const LIVE_MIN = 6;
+      /* 重绘由上面的 live-updated 监听统一负责，这里只负责按时触发拉取 */
+      setInterval(() => {
+        if (document.hidden) return;
+        if (typeof window.__REFRESH_LIVE === "function") window.__REFRESH_LIVE();
+      }, LIVE_MIN * 60000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return;
+        const lv = window.__LIVE;
+        const age = lv && lv.fetchedAt ? (Date.now() - new Date(lv.fetchedAt).getTime()) / 60000 : 1e9;
+        if (age < LIVE_MIN) return;
+        if (typeof window.__REFRESH_LIVE === "function") window.__REFRESH_LIVE();
+      });
     }
     renderAll();
   }
@@ -2114,24 +2175,36 @@
       if (el) el.textContent = "演示模式";
       const lo = document.getElementById("btnLogout");
       if (lo) lo.style.display = "none";
-      /* 演示模式下按钮改成「载入最新数据」：Actions 每 30 分钟重写 data.js，
-       * 但 Service Worker 对 data.js 走 stale-while-revalidate（先给缓存再后台更新），
-       * 所以直接 reload 第一次仍是旧数据。这里先 update() 注册，再带 cache-bust 参数重载。 */
+      /* 演示模式下按钮改成「刷新实时赔率」：boot.js 已把体彩官方接口并进 APP_DATA，
+       * 这里点一次就地重拉 + 重渲染，不整页重载（不再受 Service Worker 缓存影响）。 */
       const sync = document.getElementById("btnSync");
       if (sync) {
-        sync.textContent = "↻ 载入最新数据";
+        sync.textContent = "↻ 刷新实时赔率";
         sync.disabled = false;
-        sync.title = "官方赛程/赛果/赔率由 GitHub Actions 每 30 分钟自动刷新；点这里跳过 Service Worker 缓存直接取最新";
+        sync.title = "体彩官方接口（webapi.sporttery.cn）直连拉取当前在售场次的胜平负/让球/总进球/半全场/比分赔率";
         sync.addEventListener("click", async () => {
+          if (typeof window.__RELOAD_LIVE !== "function") {
+            setSyncMsg("实时层未加载，刷新页面重试");
+            return;
+          }
           sync.disabled = true;
-          sync.textContent = "正在取最新…";
-          try {
-            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-              const rs = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(rs.map((r) => r.update().catch(() => {})));
-            }
-          } catch (e) { /* 无 SW 或浏览器不支持，直接重载即可 */ }
-          location.replace(location.pathname + "?demo=1&tab=" + currentTab() + "&date=" + curDate + "&_=" + Date.now());
+          const back = sync.textContent;
+          sync.textContent = "正在拉取…";
+          setSyncMsg("");
+          let ok = false;
+          try { ok = await window.__RELOAD_LIVE(); } catch (e) { ok = false; }
+          renderDataStamp();
+          if (ok) {
+            /* 实时场次可能带来新日期：跟着跳到那一天，否则用户看不到刚拉的盘 */
+            const bd = window.__LIVE && window.__LIVE.businessDate;
+            if (bd && DATA.days[bd]) { curDate = bd; const s = document.getElementById("dateSel"); if (s) s.value = bd; }
+            renderAll();
+            setSyncMsg("已更新 " + ((window.__LIVE && window.__LIVE.count) || 0) + " 场实时赔率");
+          } else {
+            setSyncMsg("实时接口没响应，继续用底座数据");
+          }
+          sync.textContent = back;
+          sync.disabled = false;
         });
       }
       const bar = document.getElementById("demoBar");
