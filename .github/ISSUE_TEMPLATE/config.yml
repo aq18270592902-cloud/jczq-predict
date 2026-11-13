@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题 / 泄露凭据
+    url: https://github.com/aq18270592902-cloud
+    about: 不要在公开 issue 里贴 token、密码、cookie。请走 SECURITY.md 里的私密渠道。
+  - name: 使用问题
+    url: https://github.com/aq18270592902-cloud
+    about: 先看 README 的「排障」一节，多数问题那里已经有答案。
