@@ -126,7 +126,7 @@
     <div class="bet-wrap">
       <div class="card-sec">
         <div class="bp-t">选择比赛与玩法</div>
-        <select id="betMatchSel" class="bet-sel"></select>
+        <select id="betMatchSel" class="bet-sel" aria-label="选择比赛"></select>
         <div id="betChips"></div>
       </div>
       <div class="card-sec">
@@ -136,7 +136,7 @@
         <div class="mult-row">
           <span class="bp-l">倍数</span>
           <button type="button" id="multMinus" class="mult-btn">−</button>
-          <input id="multInput" type="text" inputmode="numeric" value="1">
+          <input id="multInput" type="text" inputmode="numeric" value="1" aria-label="投注倍数">
           <button type="button" id="multPlus" class="mult-btn">＋</button>
           <span class="bp-l">倍</span>
         </div>
@@ -147,7 +147,7 @@
         </div>
       </div>
     </div>
-    <h3>我的方案</h3>
+    <h2>我的方案</h2>
     <div class="table-wrap">
       <table id="betsTable" class="board bets">
         <colgroup><col><col><col><col><col><col><col></colgroup>
@@ -161,7 +161,7 @@
 
   <section id="tab-stats" class="panel">
     <div class="cards" id="statCards"></div>
-    <h3>各模型 / 我的预测 命中率（已开奖场次）</h3>
+    <h2>各模型 / 我的预测 命中率（已开奖场次）</h2>
     <div class="table-wrap">
       <table id="srcTable" class="board stats">
         <colgroup><col><col><col><col><col><col></colgroup>
@@ -171,7 +171,7 @@
         <tbody></tbody>
       </table>
     </div>
-    <h3>每日总结（我的预测命中率）</h3>
+    <h2>每日总结（我的预测命中率）</h2>
     <div class="table-wrap">
       <table id="dayTable" class="board stats">
         <colgroup><col><col><col><col><col><col><col><col><col></colgroup>
