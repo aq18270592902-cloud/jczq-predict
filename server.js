@@ -172,8 +172,24 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
-  '.svg': 'image/svg+xml'
+  '.webmanifest': 'application/manifest+json',
+  /* robots.txt 与 sitemap.xml 原来落到 application/octet-stream —— 搜索引擎抓 sitemap
+     时会因为类型不认识而跳过，等于 sitemap 白写。这里补齐文本类。 */
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.mp4': 'video/mp4'
 };
 
 /* 404 页面：有 404.html 就回整页（带样式与返回链接），没有就退回纯文本 */
