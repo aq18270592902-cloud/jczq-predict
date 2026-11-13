@@ -18,7 +18,17 @@
      GitHub Pages 对静态资源给 Cache-Control: max-age=600，浏览器 HTTP 缓存
      会在这 10 分钟内继续吐旧 app.js —— 只靠 SW 换 CACHE 版本号治不了这一层，
      必须让 URL 本身变掉。 */
-  var BUILD = "20261113b";
+  var BUILD = (function () {
+    /* 版本号从自身 <script src="boot.js?v=..."> 上取，发版只改 index.html 一处。
+       index.html 走 network-first，一定拿到新的 v，于是 app.js / data.js 的 URL
+       也跟着变，彻底绕开 Pages 的 max-age=600。 */
+    try {
+      var src = (document.currentScript && document.currentScript.src) || "";
+      var m = /[?&]v=([^&]+)/.exec(src);
+      if (m) return decodeURIComponent(m[1]);
+    } catch (e) {}
+    return "20261113c";
+  })();
 
   var LIVE_URL = "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry"
     + "?poolCode=hhad,had,crs,ttg,hafu,sxds&channel=c";
