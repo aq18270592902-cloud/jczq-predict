@@ -29,7 +29,7 @@
 | 模型对比（多源预测并排 + 分歧标色） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=compare) |
 | 投注方案（选场 → 过关 → 结算记录） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets) |
 | 历史统计（命中率 + 每日复盘） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=stats) |
-| 某一天的盘（示例：2026-11-13 周五 8 场） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary&date=2026-11-13) |
+| 某一天的盘（示例：2026-11-13 周五 22 场） | [在线看](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary&date=2026-11-13) |
 
 ## 界面
 
@@ -145,12 +145,12 @@ https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets&date=2026-11
 | 触发时机 | 页面打开即拉；之后每 **6 分钟**一次；标签页切回前台且超过 6 分钟立刻补拉 |
 | 超时 | 6 秒（`AbortController`），超时不算错，静默用底座数据 |
 | 合并规则 | 已有场次只刷 `time/league/home/away/rq/odds`，**`final`（我的预测）/ `preds`（模型预测）/ `result`（赛果）一律不动**；已完场的场次不覆盖赔率 |
-| 失败回退 | 完全不影响页面，8 行照常渲染；顶栏角标变红写「实时：失败（用底座数据）」，悬停看错误原文 |
+| 失败回退 | 完全不影响页面，在售场次照常渲染（当前 21~22 场）；顶栏角标变红写「实时：失败（用底座数据）」，悬停看错误原文 |
 | 角标含义 | 「底座 11-13 10:30（24 分钟前） · 官方 11-13 10:23」= data.js 落盘时间 + 体彩接口最后更新时间 |
 | 跨域 | 接口返回 `access-control-allow-origin: *`，浏览器直连无阻碍；Service Worker 完全不介入跨域请求 |
 | 手动刷新 | 顶栏「↻ 刷新实时赔率」，就地重拉重绘，不整页重载 |
 
-**为什么只有「当天在售」的 8 场？** 体彩这个接口只返回当前销售期，`matchDate` / `businessDate` 等日期参数全部无效
+**为什么只有「当天在售」的那十几场？** 体彩这个接口只返回当前销售期（实测 8~22 场随赛程密度浮动），`matchDate` / `businessDate` 等日期参数全部无效
 （传了还是同一组数据）。所以实时层只覆盖在售场次，历史赛程与赛果仍靠 `fetch_official.js` + Actions 落盘到 `data.js`。
 两者互补，不是替代关系。
 
@@ -164,7 +164,13 @@ https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets&date=2026-11
 |---|---|---|
 | 澳客竞彩在售页 | 当天/次日场次、编号、赔率 | `https://www.okooo.com/jingcai/` |
 | 澳客赛果大厅 | 已完场比分 | `https://www.okooo.com/jingcai/kaijiang/` |
-| 500 网 | 备用场次校验 | `https://trade.500.com/jczq/` |
+| 500 网 | 历史赛程/赛果回填（**仅最近 30 天**） | `https://trade.500.com/jczq/?date=YYYY-MM-DD` |
+
+> **500 网的坑（已加防护）**：日期参数只对最近约 30 天生效。传更早的日期，它不报错，而是整页吐「今天在售」的场次。
+> 早期回填就是这样把 9/30–10/13 写成了今天的比赛。现在 `fetch_official.js` 有两道闸：
+> ① 窗口校验 —— 返回场次里落在 `date-2 ~ date+1` 之外的比例超过 40% 就整批丢弃；
+> ② 星期校验 —— 编号前缀（周五/周六…）与业务日星期不符的场次直接过滤。
+> 因此**早于 30 天的历史赛果补不回来**，只能保留 `data.js` 里已有的。
 
 页面是 GBK 编码，抓下来要 `new TextDecoder('gbk')` 解。fetch 失败会自动回落 `curl.exe`（Windows 自带）。
 
@@ -180,7 +186,10 @@ node fetch_official.js 2026-11-12        # 指定日期
 
 ## 数据自动刷新（GitHub Actions）
 
-仓库里带了一个定时任务 `.github/workflows/refresh-data.yml`：**每 30 分钟**拉一次官方数据，有变化就自动提交回 `main`。
+仓库里带了一个定时任务 `.github/workflows/refresh-data.yml`：**cron 写的是每 30 分钟**，拉一次官方数据，有变化就自动提交回 `main`。
+
+> 免费档注意：GitHub 会把 `*/30` 这类高频 cron **降频**，实测两次执行间隔 4.7~5.7 小时。
+> 所以「赛果」最长会滞后几小时——这也是实时层（浏览器直连体彩）存在的原因：赔率不靠它，只有比分靠它。
 
 ```
 cron */30 * * * *
@@ -204,6 +213,22 @@ cron */30 * * * *
 | 未开赛且本地有赔率 | 只更新 `h/d/a` 三个主盘，`rq/tg/hf/sc/sxds` 保留 |
 
 早期版本在未开赛时用澳客列表页的 `{h,d,a}` **整体替换**，把体彩接口灌进来的让球、总进球、半全场、比分玩法全抹掉（data.js 从 83827B 缩到 61597B）。`scripts/verify-data.js` 现在会在「有赔率但让球玩法为 0 场」时直接判红，防止再犯。
+
+### 历史回填补齐（`scripts/backfill.js`）
+
+`data.js` 平时只往前长（当天在售 + 赛果大厅能看到的几天），滚出页面的日期会留下空洞。补洞用：
+
+```bash
+node scripts/backfill.js                    # 自动找空洞，逐日补
+node scripts/backfill.js 2026-10-14 2026-11-08   # 指定区间
+node scripts/backfill.js --missing          # 只补完全缺失的整天
+node scripts/backfill.js --force            # 已有数据也重抓
+```
+
+它按天调 `fetch_official.js <日期>`，默认注入 `SKIP_HALF=1` 跳过拿不到的半场比分（`live.500.com/detail.php` 恒返回 567 反爬页），日间限速 300ms。
+
+**当前覆盖**：37 个业务日 / 522 场 / 492 场有赛果 / 504 场有赔率，范围 2026-09-25 → 2026-11-15。
+2026-09-30 ~ 2026-10-13 这段是空的——500 网的日期窗口只有 30 天，补不回来。
 
 ## 演示模式怎么工作的
 
