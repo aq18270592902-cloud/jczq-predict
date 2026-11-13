@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /users/
 
 Sitemap: https://aq18270592902-cloud.github.io/jczq-predict/sitemap.xml
