@@ -1,14 +1,20 @@
 /* 竞足预测汇总 · Service Worker
-   演示站（GitHub Pages）静态快照：
-   - 页面导航 network-first（断网回落到缓存）
-   - app.js / data.js / style.css stale-while-revalidate（先给缓存，后台静默更新，下次打开就是新的）
-   - 图标等不变资源 cache-first
-   /api/* 一律不缓存，避免把本机服务端的响应写进离线缓存。
-   改缓存策略时把 CACHE 版本号 +1，老缓存会在 activate 时清掉。 */
-const CACHE = "jczq-v2";
+   页面结构：index.html → boot.js（串行加载 data.js → 体彩实时接口 → app.js）
+
+   缓存策略：
+   - 页面导航 index.html：network-first（断网回落缓存）
+   - boot.js / app.js / data.js / style.css：stale-while-revalidate
+     （先给缓存保证首屏秒开，后台静默换新；赔率实时性由 boot.js 直连体彩接口负责，
+       不依赖这里的缓存是否新鲜）
+   - 图标等不变资源：cache-first
+   - 跨域（体彩接口）与 /api/* 一律不拦截、不缓存
+
+   改缓存策略时把 CACHE 版本号 +1，老缓存在 activate 时清掉。 */
+const CACHE = "jczq-v4";
 const CORE = [
   "./",
   "./index.html",
+  "./boot.js",
   "./app.js",
   "./data.js",
   "./style.css",
@@ -17,8 +23,8 @@ const CORE = [
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
-/* 每天都会变、必须尽快看到新版本的文件 */
-const REVALIDATE = ["./app.js", "./data.js", "./style.css", "./index.html", "./"];
+/* 每次发版都可能变、必须尽快看到新版本的文件 */
+const REVALIDATE = ["./boot.js", "./app.js", "./data.js", "./style.css", "./index.html", "./"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -35,6 +41,8 @@ self.addEventListener("activate", (e) => {
 });
 
 function put(req, res) {
+  /* 只缓存 200 且非 opaque 的同源响应，避免把错误页写进缓存 */
+  if (!res || res.status !== 200 || res.type === "opaque") return res;
   const copy = res.clone();
   caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
   return res;
@@ -44,8 +52,8 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.origin !== location.origin) return;      /* 体彩接口等跨域请求完全不介入 */
+  if (url.pathname.startsWith("/api/")) return;    /* 本机后端接口不缓存 */
 
   const isHTML = req.mode === "navigate" || (req.headers.get("accept") || "").includes("text/html");
 
@@ -57,7 +65,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  const path = url.pathname.replace(/\/$/, "/") ;
+  const path = url.pathname;
   const isFresh = REVALIDATE.some((p) => {
     const clean = p.replace(/^\.\//, "/");
     return path === clean || path.endsWith(clean);
