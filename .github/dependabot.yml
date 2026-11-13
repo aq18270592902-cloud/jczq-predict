@@ -1,0 +1,19 @@
+version: 2
+
+updates:
+  # 只盯 GitHub Actions：仓库没有 npm/pip 依赖，唯一会过期的就是 action 版本。
+  # Actions 的 runtime 会被强制下线（node16 → node20 → node24），
+  # 用 dependabot 每周提一次 PR，比某天 workflow 突然红掉要好查。
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Asia/Shanghai"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    open-pull-requests-limit: 3
