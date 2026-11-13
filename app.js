@@ -273,19 +273,44 @@
       vals.sort((x, y) => +x[0] - +y[0]);
       return vals[0][1];
     };
-    const lowKey = (obj, map) => {
+    /* filter 用来把比分/半全场约束到与胜平负同一个方向，
+       否则会出现「胜平负推胜、比分推 1:1」这种自相矛盾的组合。 */
+    const lowKey = (obj, map, filter) => {
       if (!obj) return "";
       let best = "", bv = Infinity;
       Object.keys(obj).forEach((k) => {
         const v = +obj[k];
-        if (v > 1 && v < bv) { bv = v; best = map ? (map[k] || k) : k; }
+        if (!(v > 1) || v >= bv) return;
+        const out = map ? (map[k] || k) : k;
+        if (filter && !filter(out)) return;
+        bv = v; best = out;
       });
       return best;
     };
+    /* 比分 "2:1" → 主队进球 > 客队进球 即主胜 */
+    const scSide = (dir) => (k) => {
+      const p = String(k).split(":");
+      if (p.length !== 2) return true;
+      const h = +p[0], aw = +p[1];
+      if (!isFinite(h) || !isFinite(aw)) return true;
+      if (dir === "胜") return h > aw;
+      if (dir === "平") return h === aw;
+      return h < aw;
+    };
+    /* 半全场 "胜胜"/"平负" 看首字 */
+    const hfSide = (dir) => (k) => String(k).charAt(0) === dir;
+
     if (o.h != null) f.wdl = favWdl();
+    /* 总进球选项就是裸数字 "0".."7"（见 renderChips），别加单位 */
     if (o.tg) f.tg = lowKey(o.tg);
-    if (o.hf) f.hf = lowKey(o.hf, HF_REV);
-    if (o.sc) f.sc = lowKey(o.sc);
+    if (o.hf) f.hf = lowKey(o.hf, HF_REV, f.wdl ? hfSide(f.wdl) : null) || lowKey(o.hf, HF_REV);
+    if (o.sc) {
+      const side = f.wdl ? scSide(f.wdl) : null;
+      /* 优先具体比分（含数字），「胜其他/平其他/负其他」只在具体比分全被过滤掉时兜底 */
+      const isOther = (k) => /其他/.test(k);
+      const concrete = lowKey(o.sc, null, (k) => !isOther(k) && (!side || side(k)));
+      f.sc = concrete || lowKey(o.sc, null, side) || lowKey(o.sc);
+    }
     if (f.wdl || f.tg || f.hf || f.sc) f.auto = true;
     return f;
   }
@@ -1264,6 +1289,8 @@
           checkPred(m.preds[s], perSource[s] = perSource[s] || newStat(), m);
         });
         const f = ensureFinal(m);
+        /* 自动推导（赔率隐含概率）的场次不计入命中率，否则「我的预测」统计会被机器填的答案污染 */
+        if (f.auto) return;
         const st = perSource["最终预测"] = perSource["最终预测"] || newStat();
         checkPred(f, st, m);
         ["wdl", "tg", "hf", "sc"].forEach((k) => {
