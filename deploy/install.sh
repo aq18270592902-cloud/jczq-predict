@@ -20,6 +20,47 @@ die() { printf '\033[1;31m[!]\033[0m %s\n' "$*" >&2; exit 1; }
 command -v node >/dev/null || die "没装 node，先跑：curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt install -y nodejs"
 command -v systemctl >/dev/null || die "没有 systemd，本脚本不适用"
 
+# ------------------------------------------------------------
+# 给已有的 nginx 站点补上「压缩 + 安全响应头」。
+# 用于原地升级场景：服务器上已经有一份 conf 在反代本服务，
+# 直接覆盖会丢掉别人加的东西，所以只做「缺什么补什么」的幂等注入。
+# 用法：harden_conf /etc/nginx/sites-available/ccss
+# ------------------------------------------------------------
+harden_conf() {
+  local f="$1"
+  [ -e "$f" ] || return 0
+  # 已经有了就不再动（幂等）
+  if grep -q "X-Content-Type-Options" "$f"; then
+    say "    $f 已有安全响应头，跳过"
+    return 0
+  fi
+  cp -a "$f" "$f.bak.$(date +%Y%m%d%H%M%S)"
+  # 在第一个 server { 之后插入 gzip + 安全头；用 awk 避免 sed 多行插入的可移植性问题
+  awk '
+    BEGIN { done = 0 }
+    {
+      print
+      if (!done && $0 ~ /^[[:space:]]*server[[:space:]]*\{/) {
+        done = 1
+        print "    # --- 由 deploy/install.sh 注入：压缩 + 安全响应头 ---"
+        print "    gzip on;"
+        print "    gzip_vary on;"
+        print "    gzip_proxied any;"
+        print "    gzip_comp_level 6;"
+        print "    gzip_types text/plain text/css text/javascript application/json application/javascript application/x-javascript application/ecmascript text/xml application/xml application/xml+rss image/svg+xml;"
+        print "    gzip_min_length 1024;"
+        print "    add_header X-Content-Type-Options \"nosniff\" always;"
+        print "    add_header X-Frame-Options \"SAMEORIGIN\" always;"
+        print "    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+        print "    add_header Permissions-Policy \"geolocation=(), microphone=(), camera=(), payment=()\" always;"
+        print "    add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      }
+    }
+  ' "$f" > "$f.new"
+  mv "$f.new" "$f"
+  say "    $f 已注入 gzip + 安全响应头（原文件已备份）"
+}
+
 say "1/4 建系统用户 $APP_USER"
 id -u "$APP_USER" >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
 
@@ -88,6 +129,7 @@ if command -v nginx >/dev/null; then
   done
   if [ -n "$REUSE_PORT" ]; then
     say "检测到 ${REUSE_FILE} 已反代到 127.0.0.1:${PORT}，复用其对外端口 ${REUSE_PORT}，不新建 conf"
+    harden_conf "${REUSE_FILE}"
     nginx -t && systemctl reload nginx
     say "完成。浏览器打开 http://<服务器IP>:${REUSE_PORT}/"
     exit 0
@@ -122,6 +164,20 @@ server {
     listen ${WEB_PORT};
     server_name _;
     client_max_body_size 8m;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/javascript application/json application/javascript application/x-javascript application/ecmascript text/xml application/xml application/xml+rss image/svg+xml;
+    gzip_min_length 1024;
+
+    # 安全响应头：GitHub Pages 版只能靠 meta 兜底，服务器版这里给真 HTTP 头
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
 
     location / {
         proxy_pass http://127.0.0.1:${PORT};
