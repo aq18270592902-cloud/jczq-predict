@@ -3031,7 +3031,10 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "2:0",
+            "half": "1:0"
+          }
         },
         {
           "id": "周四004",
@@ -3114,7 +3117,10 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "2:1",
+            "half": "0:0"
+          }
         },
         {
           "id": "周四005",
@@ -3197,7 +3203,10 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "2:1",
+            "half": "1:0"
+          }
         },
         {
           "id": "周四006",
@@ -3219,13 +3228,16 @@ window.APP_DATA = {
             "sc": "",
             "note": ""
           },
-          "result": null
+          "result": {
+            "score": "0:2",
+            "half": "0:1"
+          }
         }
       ]
     }
   },
   "meta": {
-    "updatedAt": "2026-11-12T20:59:19.917Z",
+    "updatedAt": "2026-11-13T01:44:22.087Z",
     "sources": [
       "okooo.com/jingcai",
       "sporttery.cn"
