@@ -18,7 +18,7 @@
      GitHub Pages 对静态资源给 Cache-Control: max-age=600，浏览器 HTTP 缓存
      会在这 10 分钟内继续吐旧 app.js —— 只靠 SW 换 CACHE 版本号治不了这一层，
      必须让 URL 本身变掉。 */
-  var BUILD = "20261113a";
+  var BUILD = "20261113b";
 
   var LIVE_URL = "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry"
     + "?poolCode=hhad,had,crs,ttg,hafu,sxds&channel=c";
