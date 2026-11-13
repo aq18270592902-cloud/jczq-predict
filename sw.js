@@ -9,8 +9,11 @@
    - 图标等不变资源：cache-first
    - 跨域（体彩接口）与 /api/* 一律不拦截、不缓存
 
-   改缓存策略时把 CACHE 版本号 +1，老缓存在 activate 时清掉。 */
-const CACHE = "jczq-v4";
+   改缓存策略时把 CACHE 版本号 +1，老缓存在 activate 时清掉。
+   注意：SW 只挡得住它自己缓存的副本，挡不住浏览器 HTTP 缓存（Pages 给静态资源
+   Cache-Control: max-age=600）。所以 boot.js 给 app.js 带 ?v=BUILD、给 data.js 带
+   5 分钟时间桶，靠 URL 变化强制绕过 HTTP 缓存。 */
+const CACHE = "jczq-v5";
 const CORE = [
   "./",
   "./index.html",
