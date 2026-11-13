@@ -37,14 +37,14 @@
       "url": "./index.html?tab=summary"
     },
     {
-      "name": "命中率复盘",
-      "short_name": "复盘",
-      "url": "./index.html?tab=review"
+      "name": "多源对比",
+      "short_name": "对比",
+      "url": "./index.html?tab=compare"
     },
     {
-      "name": "投注方案",
-      "short_name": "方案",
-      "url": "./index.html?tab=plan"
+      "name": "命中率复盘",
+      "short_name": "复盘",
+      "url": "./index.html?tab=stats"
     }
   ]
 }
