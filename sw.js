@@ -13,7 +13,7 @@
    注意：SW 只挡得住它自己缓存的副本，挡不住浏览器 HTTP 缓存（Pages 给静态资源
    Cache-Control: max-age=600）。所以 boot.js 给 app.js 带 ?v=BUILD、给 data.js 带
    5 分钟时间桶，靠 URL 变化强制绕过 HTTP 缓存。 */
-const CACHE = "jczq-v5";
+const CACHE = "jczq-v6";
 const CORE = [
   "./",
   "./index.html",
@@ -31,7 +31,9 @@ const REVALIDATE = ["./boot.js", "./app.js", "./data.js", "./style.css", "./inde
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(CORE).catch(() => {})).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then((c) => Promise.allSettled(CORE.map((u) => c.add(new Request(u, { cache: "reload" })))))
+      .then(() => self.skipWaiting())
   );
 });
 
