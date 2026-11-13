@@ -973,3 +973,13 @@ body.logged-out main {
 @media (max-width: 560px) {
   .demo-bar { font-size: 12px; padding: 8px 12px; }
 }
+
+/* ---------- 实时角标（体彩官方接口直连拉取状态） ---------- */
+#liveBadge { white-space: nowrap; }
+#liveBadge.live-ok { color: #15803d; }
+#liveBadge.live-fail { color: #b91c1c; }
+#liveBadge.live-wait { color: var(--faint); }
+@media (max-width: 640px) {
+  /* 手机窄屏：两个时间角标各占一行，别把导出按钮挤到第二屏 */
+  #liveBadge, #dataStamp { font-size: 11px; }
+}
