@@ -14,8 +14,10 @@
 
 **在线演示**：https://aq18270592902-cloud.github.io/jczq-predict/
 
-> 演示站是静态快照（浏览器里跑，数据只读），用来先看界面长什么样。
-> 自动拉数据、账号同步、导出这些要本地 `node server.js` 才有。
+> 演示站是静态快照（浏览器里跑，数据只读），但**赔率是实时的**：页面打开时 `boot.js` 直接向体彩官方接口
+> `webapi.sporttery.cn` 拉当前在售场次与全玩法赔率（胜平负 / 让球 / 总进球 / 半全场 / 比分 / 上下单双），
+> 之后每 6 分钟静默刷新一次，不用等 GitHub Actions。赛果仍由 Actions 落盘。
+> 账号同步、投注记录、导出这些要本地 `node server.js` 才有。
 >
 > 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。默认对外端口 **8082**（80 与 8080 已被同机别的站点占用，脚本会自动往后找空闲端口），Node 进程监听 `127.0.0.1:8765`。
 
@@ -76,7 +78,10 @@ Windows 双击 `启动网页服务.vbs` 静默启动（无黑窗）。开机自�
 
 想装成手机 App 直接看：打开演示站 → 浏览器菜单「添加到主屏幕」。演示站已带 PWA 清单和 Service Worker，装完断网也能开（数据是快照，不会自动更新）。
 
-首次启动 8 秒后自动拉一次数据，之后每 2 小时一次。
+首次启动 8 秒后自动拉一次数据，之后每 2 小时一次（服务端抓取）。
+
+浏览器端另有一条独立通路：`boot.js` 每次打开页面都会直连体彩官方接口拉实时赔率，页面开着时每 6 分钟刷一次，
+跟服务端有没有跑无关。
 
 ## 目录结构
 
@@ -85,7 +90,8 @@ jczq-predict/
 ├─ server.js          # HTTP 服务：静态托管 + 账号 + 用户数据 API + 定时更新
 ├─ fetch_official.js  # 抓取脚本：澳客竞彩 + 500 网 + 体彩接口，写入 data.js
 ├─ scripts/verify-data.js  # data.js 结构校验（CI 与 refresh-data 都跑）
-├─ index.html         # 单页前端
+├─ index.html         # 单页前端（只引 boot.js）
+├─ boot.js            # 引导层：data.js 底座 → 体彩官方实时接口合并 → app.js（失败静默回退）
 ├─ app.js             # 前端逻辑（4 个 tab + 表格渲染 + 导出 + 演示模式）
 ├─ style.css          # 样式
 ├─ data.js            # 赛事数据（fetch_official.js 自动生成/覆盖）
@@ -117,6 +123,40 @@ https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=bets&date=2026-11
 ```
 
 发给队友，对方点开直接落在同一页同一天。切换页签时地址栏会同步更新（`?tab=compare&date=2026-11-11`），刷新不会跳回第一页。
+
+## 实时赔率（浏览器直连体彩官方接口）
+
+这是「数据不更新」的根治手段。GitHub Actions 免费档会把 `*/30` 降频到 4~5 小时一次，
+靠 cron 保证赔率新鲜不现实，所以赔率改成浏览器自己去要。
+
+```
+打开页面
+  └─ boot.js
+       ├─ 加载 data.js          ← 静态底座（Actions 落盘的赛程/赛果/历史赔率）
+       ├─ fetch 体彩官方接口    ← 实时层（当前在售场次 + 全玩法赔率）
+       │    https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry
+       │      ?poolCode=hhad,had,crs,ttg,hafu,sxds&channel=c
+       ├─ mergeLive() 合并进 window.APP_DATA
+       └─ 加载 app.js            ← 照常渲染
+```
+
+| 特性 | 说明 |
+|---|---|
+| 触发时机 | 页面打开即拉；之后每 **6 分钟**一次；标签页切回前台且超过 6 分钟立刻补拉 |
+| 超时 | 6 秒（`AbortController`），超时不算错，静默用底座数据 |
+| 合并规则 | 已有场次只刷 `time/league/home/away/rq/odds`，**`final`（我的预测）/ `preds`（模型预测）/ `result`（赛果）一律不动**；已完场的场次不覆盖赔率 |
+| 失败回退 | 完全不影响页面，8 行照常渲染；顶栏角标变红写「实时：失败（用底座数据）」，悬停看错误原文 |
+| 角标含义 | 「底座 11-13 10:30（24 分钟前） · 官方 11-13 10:23」= data.js 落盘时间 + 体彩接口最后更新时间 |
+| 跨域 | 接口返回 `access-control-allow-origin: *`，浏览器直连无阻碍；Service Worker 完全不介入跨域请求 |
+| 手动刷新 | 顶栏「↻ 刷新实时赔率」，就地重拉重绘，不整页重载 |
+
+**为什么只有「当天在售」的 8 场？** 体彩这个接口只返回当前销售期，`matchDate` / `businessDate` 等日期参数全部无效
+（传了还是同一组数据）。所以实时层只覆盖在售场次，历史赛程与赛果仍靠 `fetch_official.js` + Actions 落盘到 `data.js`。
+两者互补，不是替代关系。
+
+**接口反爬注意**：Node 侧直连时，**不带 `User-Agent` 能过，只带 `User-Agent` 会被 567 拦**。
+要带就带全套浏览器头（`Referer: https://www.sporttery.cn/` + `Origin` + `Accept: application/json`）。
+`fetch_official.js` 里用的是 Node 默认头，所以一直是通的 —— 别顺手给它加 UA。
 
 ## 数据来源
 
@@ -180,7 +220,7 @@ if (/(^|\.)github\.io$/.test(location.hostname) || /[?&]demo=1/.test(location.se
 |---|---|---|
 | `bootApp()` | 先 `fetch('/api/me')`，未登录弹登录遮罩 | 直接进主界面，顶栏写「演示模式」，隐藏退出按钮 |
 | `loadJSON / persistUser` | 读写 `/api/data` | 读写 `localStorage`，不碰后端 |
-| 数据轮询 | 每 2 小时 `autoCheck` | 不轮询，更新按钮置灰 |
+| 数据轮询 | 每 2 小时 `autoCheck` | 不轮询后端；改由 `boot.js` 每 6 分钟拉体彩实时赔率 |
 | 模型列 | 你录入的才有 | 注入 `模型A·示例` / `模型B·示例` 两列 |
 | 投注记录 | 你自己的 | 注入三条示例方案（已中奖 / 未中 / 待开奖各一条） |
 
@@ -265,9 +305,10 @@ node server.js
 | 页面数据不更新 | 抓取失败 | `/api/status` 看 `lastOk`，手动跑 `node fetch_official.js` 看报错 |
 | 中文乱码 | GBK 未解码 | 确认走的是 `TextDecoder('gbk')` 分支，不是 `r.text()` |
 | 登录后立刻掉线 | 服务重启 | session 在内存，重启后需重新登录 |
-| 演示站点了「更新」没反应 | 静态快照没有后端 | 正常行为，按钮已置灰 |
+| 演示站赔率不动 | 体彩接口被拦 / 断网 | 顶栏角标会变红写「实时：失败（用底座数据）」，鼠标悬停看具体错误；恢复网络后自动转绿 |
+| 演示站赛果不更新 | Actions cron 降频 | 免费档 `*/30` 实际可能 4~5 小时跑一次；赛果不急，赔率走实时层不受影响 |
 | `/users/xxx.json` 打不开 | 显式 404 保护 | 正常，用户数据不经静态托管暴露 |
-| 数据时间戳一直是旧的 | Actions 没跑或抓取失败 | Actions 页看 refresh-data 最近一次 run，或本地 `node fetch_official.js` |
+| 数据时间戳一直是旧的 | Actions 没跑或抓取失败 | Actions 页看 refresh-data 最近一次 run，或本地 `node fetch_official.js`；注意角标现在分两段：「底座」= data.js 落盘时间，「官方」= 体彩接口最后更新时间 |
 | data.js 突然变小 | 玩法赔率被整体覆盖 | 跑 `node scripts/verify-data.js`，看是否报「丢失让球玩法赔率」 |
 
 ## 依赖
