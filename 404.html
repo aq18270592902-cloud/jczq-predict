@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>404 · 页面不存在 — 竞足预测汇总</title>
 <meta name="robots" content="noindex,follow">
-<script>/* Pages 上 404 会在任意深度被返回，用 base 把相对路径钉到项目根；自有服务器直接相对即可 */
-if(/(^|\.)github\.io$/i.test(location.hostname))document.write('<base href="/jczq-predict/">');</script>
+<script>/* 404 可能在任意深度返回，用 base 把相对路径钉死：Pages 在子路径，自有服务器在根 */
+document.write('<base href="'+(/(^|\.)github\.io$/i.test(location.hostname)?"/jczq-predict/":"/")+'">');</script>
 <link rel="icon" href="./favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
