@@ -41,6 +41,8 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebApplication","name":"竞足预测汇总","url":"https://aq18270592902-cloud.github.io/jczq-predict/","description":"竞彩足球数据面板：官方赛程赛果与赔率自动拉取，多源预测横向对比、分歧标注、投注方案生成与历史命中率复盘。","applicationCategory":"SportsApplication","operatingSystem":"Web","inLanguage":"zh-CN","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"author":{"@type":"Person","name":"aq18270592902-cloud","url":"https://github.com/aq18270592902-cloud"}}
 </script>
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self' https://webapi.sporttery.cn; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'">
 </head>
 <body>
 <noscript>
@@ -252,7 +254,7 @@
             <path fill="#64748b" d="M19 17v-2c0-1.1-.9-2-2-2h-1v-2c0-2.21-1.79-4-4-4S8 8.79 8 11v2H7c-1.1 0-2 .9-2 2v2h14zM12 5c3.31 0 6 2.69 6 6v2h-2v-2c0-2.21-1.79-4-4-4s-4 1.79-4 4v2H6v-2c0-3.31 2.69-6 6-6z"/>
           </svg>
         </span>
-        <input id="loginPhone" class="ui-input login-input" type="tel" placeholder="手机号" maxlength="11" inputmode="numeric" autocomplete="username">
+        <input id="loginPhone" class="ui-input login-input" type="tel" aria-label="手机号" placeholder="手机号" maxlength="11" inputmode="numeric" autocomplete="username">
       </div>
       <div class="login-field">
         <span class="login-ico">
@@ -260,7 +262,7 @@
             <path fill="#64748b" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 3c1.66 0 3 1.34 3 3v2H9V6c0-1.66 1.34-3 3-3zm0 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
           </svg>
         </span>
-        <input id="loginPass" class="ui-input login-input" type="password" placeholder="密码（6-20位）" maxlength="20" autocomplete="current-password">
+        <input id="loginPass" class="ui-input login-input" type="password" aria-label="密码" placeholder="密码（6-20位）" maxlength="20" autocomplete="current-password">
       </div>
       <label class="login-mode"><input type="checkbox" id="isRegister"> 注册新账号</label>
     </div>
