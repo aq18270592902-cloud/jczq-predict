@@ -124,6 +124,13 @@ function businessDateOf(idPrefix, matchDate) {
   return '';
 }
 
+/* ISO 日期加减（本地无时区偏移问题：按 UTC 递增再截断） */
+function addIso(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function groupByBusinessDate(rows) {
   const out = {};
   for (const r of rows) {
@@ -313,6 +320,15 @@ async function merge500(date) {
   const rows = parse500(html);
   log('500 解析到 ' + rows.length + ' 场');
   if (!rows.length) { log('未解析到比赛，保持 data.js 不变'); return; }
+  /* 关键校验：500 只保留最近 30 天的历史。超出窗口时它不报错，而是把「当前在售页」整页吐回来
+   * （周五/周六/周日那批今天的场次）。若不校验，回填会把今天的比赛写到 9 月的键下，
+   * 制造出整月的假数据。这里要求至少 60% 的场次落在 date 附近，否则直接放弃这一天。 */
+  const winLo = addIso(date, -2), winHi = addIso(date, 1);
+  const inWin = rows.filter((r) => r.date && r.date >= winLo && r.date <= winHi).length;
+  if (inWin < rows.length * 0.6) {
+    log('500 返回的不是 ' + date + ' 的场次（' + inWin + '/' + rows.length + ' 落在 ' + winLo + '~' + winHi + '），放弃回填');
+    return;
+  }
   const d = loadAppData();
   const day = d.days[date] || (d.days[date] = { matches: [] });
   let added = 0, scored = 0, oddsN = 0, fixedName = 0;
@@ -336,6 +352,14 @@ async function merge500(date) {
       scored++;
     }
   });
+  /* 只保留编号星期与业务日一致的场次：500 偶尔把相邻期次混进来，混进来会让「周四001」出现在周五的页面上 */
+  const wdOf = new Date(date + 'T00:00:00').getDay();
+  const before = day.matches.length;
+  day.matches = day.matches.filter((m) => {
+    const want = WD_MAP[String(m.id || '').slice(0, 2)];
+    return want === undefined || want === wdOf;
+  });
+  if (before !== day.matches.length) log('过滤星期不符场次 ' + (before - day.matches.length) + ' 条');
   day.matches.sort((a, b) => a.id.localeCompare(b.id, 'zh'));
   /* 回补缺失的半场比分（赛果大厅已滚出的场次，走500详情页） */
   let halfN = 0;
