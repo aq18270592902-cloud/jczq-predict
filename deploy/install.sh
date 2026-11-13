@@ -10,8 +10,8 @@ set -euo pipefail
 APP_NAME="jczq-predict"
 APP_DIR="/opt/${APP_NAME}"
 APP_USER="${APP_NAME}"
-PORT="${PORT:-8765}"          # Node 进程监听的本机端口
-WEB_PORT="${WEB_PORT:-8082}"  # nginx 对外端口。80 是别的站点、8080 是 Next.js 应用、8081 留给 naraka，本站从 8082 起
+PORT="${PORT:-8775}"          # Node 进程监听的本机端口（8765 常被老版 pm2 占着，所以默认 8775）
+WEB_PORT="${WEB_PORT:-8766}"  # nginx 对外端口；本机 8766 是既有的对外入口，优先复用
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
@@ -73,6 +73,25 @@ systemctl enable --now "${APP_NAME}"
 
 say "4/4 配 nginx 反代（没装 nginx 就跳过）"
 if command -v nginx >/dev/null; then
+  # 0) 已有 nginx 站点已经反代到 127.0.0.1:${PORT}（典型场景：老版本原地升级）→ 直接复用那个对外端口，
+  #    不再新建 conf，否则会多开一个外网不通的端口（安全组只放行特定端口）。
+  REUSE_PORT=""
+  REUSE_FILE=""
+  for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+    [ -e "$f" ] || continue
+    case "$f" in */${APP_NAME}.conf) continue;; esac
+    if grep -qE "proxy_pass[[:space:]]+http://127\.0\.0\.1:${PORT}([^0-9]|$)" "$f"; then
+      REUSE_PORT=$(grep -oE "^[[:space:]]*listen[[:space:]]+[0-9]+" "$f" | head -1 | grep -oE "[0-9]+$")
+      REUSE_FILE="$f"
+      break
+    fi
+  done
+  if [ -n "$REUSE_PORT" ]; then
+    say "检测到 ${REUSE_FILE} 已反代到 127.0.0.1:${PORT}，复用其对外端口 ${REUSE_PORT}，不新建 conf"
+    nginx -t && systemctl reload nginx
+    say "完成。浏览器打开 http://<服务器IP>:${REUSE_PORT}/"
+    exit 0
+  fi
   # 端口冲突检测，两层：
   #   1) /etc/nginx/conf.d 里别的站点已 listen 同端口且 server_name 都是 _ → nginx 只用先加载的，本站会「访问这个端口打开的是别的项目」
   #   2) 端口被任何非 nginx 进程占着（Next.js / docker / pm2 / 别人的 node）→ nginx -t 过，reload 直接 EADDRINUSE
