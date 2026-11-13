@@ -28,5 +28,23 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "id": "./",
+  "shortcuts": [
+    {
+      "name": "今日预测",
+      "short_name": "今日",
+      "url": "./index.html?tab=summary"
+    },
+    {
+      "name": "命中率复盘",
+      "short_name": "复盘",
+      "url": "./index.html?tab=review"
+    },
+    {
+      "name": "投注方案",
+      "short_name": "方案",
+      "url": "./index.html?tab=plan"
+    }
   ]
 }
