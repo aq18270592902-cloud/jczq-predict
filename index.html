@@ -71,21 +71,21 @@
 </div>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="summary"><span class="tab-txt">每日汇总</span></button>
-  <button class="tab" data-tab="compare"><span class="tab-txt">模型对比</span></button>
-  <button class="tab" data-tab="bets"><span class="tab-txt">投注方案</span></button>
-  <button class="tab" data-tab="stats"><span class="tab-txt">历史统计</span></button>
+  <button type="button" class="tab active" data-tab="summary"><span class="tab-txt">每日汇总</span></button>
+  <button type="button" class="tab" data-tab="compare"><span class="tab-txt">模型对比</span></button>
+  <button type="button" class="tab" data-tab="bets"><span class="tab-txt">投注方案</span></button>
+  <button type="button" class="tab" data-tab="stats"><span class="tab-txt">历史统计</span></button>
 </nav>
 
 <div class="export-bar">
-  <button id="btnSync" class="sync-btn">↻ 更新比赛数据</button>
+  <button type="button" id="btnSync" class="sync-btn">↻ 更新比赛数据</button>
   <span id="syncMsg" class="bar-hint"></span>
   <span id="liveBadge" class="bar-hint" title="体彩官方实时接口（webapi.sporttery.cn）最近一次拉取状态"></span>
   <span id="dataStamp" class="bar-hint" title="静态底座最近一次落盘时间（GitHub Actions 定时刷新）"></span>
   <span style="flex:1"></span>
-  <button id="btnShare" title="把当前页签 + 当前日期复制成一条链接">复制视图链接</button>
-  <button id="btnExpExcel">导出 Excel</button>
-  <button id="btnExpImg">导出图片</button>
+  <button type="button" id="btnShare" title="把当前页签 + 当前日期复制成一条链接">复制视图链接</button>
+  <button type="button" id="btnExpExcel">导出 Excel</button>
+  <button type="button" id="btnExpImg">导出图片</button>
 </div>
 
 <main>
@@ -111,7 +111,7 @@
 
   <section id="tab-compare" class="panel">
     <div class="compare-bar">
-      <button id="btnAddModel" class="bar-btn primary">＋ 添加模型</button>
+      <button type="button" id="btnAddModel" class="bar-btn primary">＋ 添加模型</button>
     </div>
     <div class="table-wrap">
       <table id="compareTable" class="board compare">
