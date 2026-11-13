@@ -185,6 +185,18 @@ function send404(s) {
   });
 }
 
+/* ---- 静态资源缓存策略 ----
+ * index.html / data.js / sw.js：每次都回源（数据和版本随时会变）
+ * 带 ?v= 的资源（boot.js?v=、app.js?v=、style.css?v=）：一年强缓存 immutable
+ * 其余（图标、manifest）：10 分钟 + ETag 条件请求
+ * ETag 用 size + mtime，部署换文件即失效，不用读全文件算哈希。 */
+function cacheControlFor(pathname, hasVer) {
+  if (pathname === '/' || pathname === '/index.html') return 'no-cache';
+  if (pathname === '/data.js' || pathname === '/sw.js') return 'no-cache';
+  if (hasVer) return 'public, max-age=31536000, immutable';
+  return 'public, max-age=600, must-revalidate';
+}
+
 
 
 const srv = http.createServer(async (q, s) => {
@@ -299,13 +311,23 @@ const srv = http.createServer(async (q, s) => {
   if (f.startsWith(path.join(root, 'users') + path.sep) || f === path.join(root, 'keys.json')) {
     s.writeHead(404); return s.end('404');
   }
-  fs.readFile(f, (e, d) => {
-    if (e) return send404(s);
-    s.writeHead(200, {
-      'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
+  fs.stat(f, (se, st) => {
+    if (se || !st.isFile()) return send404(s);
+    const etag = 'W/"' + st.size.toString(16) + '-' + Math.floor(st.mtimeMs).toString(16) + '"';
+    const cc = cacheControlFor(decoded, u.searchParams.has('v'));
+    if (String(q.headers['if-none-match'] || '').trim() === etag) {
+      s.writeHead(304, { 'ETag': etag, 'Cache-Control': cc });
+      return s.end();
+    }
+    fs.readFile(f, (e, d) => {
+      if (e) return send404(s);
+      s.writeHead(200, {
+        'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream',
+        'Cache-Control': cc,
+        'ETag': etag
+      });
+      s.end(d);
     });
-    s.end(d);
   });
 });
 srv.on('error', (e) => {
