@@ -24,7 +24,98 @@ const USERS_DIR = path.join(root, 'users');
 const SESSIONS = new Map(); /* sid(hex32) -> phone */
 const DATA_KEYS = new Set(['myFinal', 'customModels', 'preds', 'renames', 'order', 'bets', 'notes', 'tags']);
 const MAX_BODY = 5 * 1024 * 1024; /* 5MB */
-const SESSION_MAX_AGE = 30 * 24 * 3600; /* 30 天（秒） */
+const SESSION_MAX_AGE = 30 * 24 * 3600;
+
+/* ── GitHub 回推（可选）：让 Pages 与服务器共用同一份 data.js ──────────────
+   服务器 2 小时刷一次，GitHub Actions 的 cron 免费档实测 4.7~7.2 小时才跑一次，
+   所以 Pages 的数据天然比服务器旧几小时。开启本功能后，doUpdate 成功就把
+   data.js 推回仓库，Pages 构建完即与服务器同源同新鲜度。
+   开启方式：在 /opt/jczq-predict/.env 里加两行
+     GITHUB_TOKEN=ghp_xxx      （fine-grained token，只需 Contents: Read and write）
+     GITHUB_REPO=aq18270592902-cloud/jczq-predict
+   不配则完全不联网、零行为变化。 */
+const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_REPO  = String(process.env.GITHUB_REPO  || '').trim();
+const GITHUB_PATH  = String(process.env.GITHUB_PATH  || 'data.js').trim();
+const GITHUB_BRANCH= String(process.env.GITHUB_BRANCH|| 'main').trim();
+const GH_ENABLED = !!(GITHUB_TOKEN && /^[^\/]+\/[^\/]+$/.test(GITHUB_REPO));
+const GH_API = 'https://api.github.com';
+
+/* 取当前文件 sha；不存在返回 null（首次推送）。 */
+async function ghGetSha() {
+  const url = `${GH_API}/repos/${GITHUB_REPO}/contents/${encodeURIComponent(GITHUB_PATH)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
+  const r = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'jczq-predict-server'
+    }
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GET sha ${r.status} ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  return j.sha || null;
+}
+
+/* 内容未变就不推（比较仓库里的 sha 与本地 blob sha）。 */
+function gitBlobSha(buf) {
+  return crypto.createHash('sha1')
+    .update(Buffer.concat([Buffer.from(`blob ${buf.length}\0`), buf]))
+    .digest('hex');
+}
+
+/* 把 data.js 回推仓库。失败只记日志，绝不影响刷新主流程。 */
+async function pushDataToGitHub() {
+  if (!GH_ENABLED) return { skipped: true, reason: 'GITHUB_TOKEN/GITHUB_REPO 未配置' };
+  const file = path.join(root, GITHUB_PATH);
+  let buf;
+  try { buf = await fs.promises.readFile(file); }
+  catch (e) { return { ok: false, err: `读本地 ${GITHUB_PATH} 失败: ${e.message}` }; }
+  const localSha = gitBlobSha(buf);
+  let remoteSha = null;
+  try { remoteSha = await ghGetSha(); }
+  catch (e) { return { ok: false, err: `取远端 sha 失败: ${e.message}` }; }
+  if (remoteSha === localSha) return { ok: true, skipped: true, reason: '内容一致，无需推送', sha: localSha };
+
+  const body = {
+    message: `chore(data): 服务器回推 ${new Date().toISOString().slice(0, 16).replace('T', ' ')}Z`,
+    content: buf.toString('base64'),
+    branch: GITHUB_BRANCH
+  };
+  if (remoteSha) body.sha = remoteSha;
+  for (let i = 1; i <= 3; i++) {
+    try {
+      const r = await fetch(`${GH_API}/repos/${GITHUB_REPO}/contents/${encodeURIComponent(GITHUB_PATH)}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json',
+          'User-Agent': 'jczq-predict-server'
+        },
+        body: JSON.stringify(body)
+      });
+      if (r.ok) {
+        const j = await r.json();
+        return { ok: true, sha: (j.content && j.content.sha) || localSha, bytes: buf.length, commit: j.commit && j.commit.sha };
+      }
+      const txt = (await r.text()).slice(0, 300);
+      /* 409/422 = sha 过期（别人刚推过），重取 sha 再来 */
+      if ((r.status === 409 || r.status === 422) && i < 3) {
+        try { const s2 = await ghGetSha(); if (s2) body.sha = s2; else delete body.sha; } catch (_) {}
+        await new Promise(t => setTimeout(t, 800 * i));
+        continue;
+      }
+      return { ok: false, err: `PUT ${r.status} ${txt}` };
+    } catch (e) {
+      if (i === 3) return { ok: false, err: `PUT 异常: ${e.message}` };
+      await new Promise(t => setTimeout(t, 800 * i));
+    }
+  }
+  return { ok: false, err: 'PUT 重试耗尽' };
+} /* 30 天（秒） */
 
 /* ---- 部署配置：默认只监听本机，管理接口需 Token ---- */
 const PORT = Number(process.env.PORT || 8765);
@@ -131,7 +222,11 @@ function sendJson(s, status, obj, headers) {
   s.end(JSON.stringify(obj));
 }
 
-const state = { updating: false, lastAt: 0, lastOk: null, lastLog: '', timer: null };
+const state = {
+  updating: false, lastAt: 0, lastOk: null, lastLog: '', timer: null,
+  /* GitHub 回推结果（供 /api/status 展示，排查「Pages 为什么不更新」） */
+  ghAt: 0, ghOk: null, ghMsg: '', ghSha: ''
+};
 
 function runFetch(date) {
   return new Promise((resolve) => {
@@ -153,7 +248,24 @@ async function doUpdate(date, manual) {
     state.lastAt = Date.now();
     state.lastOk = r.code === 0;
     state.lastLog = (r.out + r.err).slice(-2000);
-    return { ok: state.lastOk, log: state.lastLog };
+    /* 拉取成功后把 data.js 回推 GitHub，让 Pages 与服务器同源同新鲜度。
+       失败不影响本次刷新结果，只记在 state.gh* 里。 */
+    let gh = null;
+    if (state.lastOk) {
+      try {
+        gh = await pushDataToGitHub();
+        state.ghAt = Date.now();
+        state.ghOk = !!gh.ok;
+        state.ghMsg = gh.ok ? (gh.skipped ? (gh.reason || '内容一致') : `已推送 ${gh.bytes || 0}B @ ${String(gh.commit || '').slice(0, 7)}`) : String(gh.err || '');
+        if (gh.ok && gh.sha) state.ghSha = gh.sha;
+        console.log(`[github] ${state.ghOk ? 'OK' : 'FAIL'} ${state.ghMsg}`);
+      } catch (e) {
+        state.ghAt = Date.now(); state.ghOk = false;
+        state.ghMsg = String((e && e.message) || e);
+        console.log('[github] 异常 ' + state.ghMsg);
+      }
+    }
+    return { ok: state.lastOk, log: state.lastLog, github: gh };
   } catch (e) {
     state.lastAt = Date.now();
     state.lastOk = false;
@@ -235,7 +347,18 @@ const srv = http.createServer(async (q, s) => {
       updating: state.updating,
       lastAt: state.lastAt,
       lastOk: state.lastOk,
-      ageMin: state.lastAt ? Math.round((Date.now() - state.lastAt) / 60000) : null
+      ageMin: state.lastAt ? Math.round((Date.now() - state.lastAt) / 60000) : null,
+      /* GitHub 回推状态：ghOk=null 表示还没跑过或未配置；ghMsg 是给人看的一句话 */
+      github: GH_ENABLED ? {
+        enabled: true,
+        repo: GITHUB_REPO,
+        path: GITHUB_PATH,
+        branch: GITHUB_BRANCH,
+        at: state.ghAt || null,
+        ok: state.ghOk,
+        msg: state.ghMsg,
+        sha: state.ghSha
+      } : { enabled: false, hint: '在 .env 里配 GITHUB_TOKEN 与 GITHUB_REPO 即可让 Pages 与服务器同源' }
     }));
   }
 
