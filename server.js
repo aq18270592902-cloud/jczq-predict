@@ -192,6 +192,16 @@ const MIME = {
   '.mp4': 'video/mp4'
 };
 
+/* 无扩展名的纯文本文件（VERSION / LICENSE / README）单独认一下，
+   否则会落到 application/octet-stream，浏览器直接变成下载。 */
+const TEXT_NOEXT = new Set(['VERSION', 'LICENSE', 'README', 'CHANGELOG', 'NOTICE']);
+function contentTypeOf(file) {
+  const ext = path.extname(file).toLowerCase();
+  if (ext && MIME[ext]) return MIME[ext];
+  if (!ext && TEXT_NOEXT.has(path.basename(file).toUpperCase())) return 'text/plain; charset=utf-8';
+  return 'application/octet-stream';
+}
+
 /* 404 页面：有 404.html 就回整页（带样式与返回链接），没有就退回纯文本 */
 function send404(s) {
   fs.readFile(path.join(root, '404.html'), (e, d) => {
@@ -338,7 +348,7 @@ const srv = http.createServer(async (q, s) => {
     fs.readFile(f, (e, d) => {
       if (e) return send404(s);
       s.writeHead(200, {
-        'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream',
+        'Content-Type': contentTypeOf(f),
         'Cache-Control': cc,
         'ETag': etag
       });
