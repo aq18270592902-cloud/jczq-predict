@@ -256,6 +256,58 @@
   })();
 
   /* ---------- 工具函数 ---------- */
+  /* 半全场反查表：hh → 胜胜（实时层只给 hh/hd/... 这类键） */
+  const HF_REV = Object.keys(HF_KEY).reduce((m, k) => { m[HF_KEY[k]] = k; return m; }, {});
+
+  /* 实时层会往当天 push 新场次，新场次只有官方赔率、没有本地模型预测。
+     这里按赔率隐含概率（取最低赔=最高概率）兜底生成一版预测，并打 f.auto 标记，
+     保证表格不会整列破折号；用户手动录入预测后 m.final 有值，本函数直接返回不再覆盖。 */
+  function ensureFinal(m) {
+    if (!m.final) m.final = {};
+    const f = m.final;
+    if (f.wdl || f.tg || f.hf || f.sc) return f;
+    const o = m.odds || {};
+    const favWdl = () => {
+      const vals = [[o.h, "胜"], [o.d, "平"], [o.a, "负"]].filter((x) => x[0] != null && +x[0] > 1);
+      if (!vals.length) return "";
+      vals.sort((x, y) => +x[0] - +y[0]);
+      return vals[0][1];
+    };
+    const lowKey = (obj, map) => {
+      if (!obj) return "";
+      let best = "", bv = Infinity;
+      Object.keys(obj).forEach((k) => {
+        const v = +obj[k];
+        if (v > 1 && v < bv) { bv = v; best = map ? (map[k] || k) : k; }
+      });
+      return best;
+    };
+    if (o.h != null) f.wdl = favWdl();
+    if (o.tg) f.tg = lowKey(o.tg);
+    if (o.hf) f.hf = lowKey(o.hf, HF_REV);
+    if (o.sc) f.sc = lowKey(o.sc);
+    if (f.wdl || f.tg || f.hf || f.sc) f.auto = true;
+    return f;
+  }
+
+  /* 重建日期下拉：实时层可能刚带进一个新业务日（比如跨零点后的次日盘口），
+     dates 数组与 <select> 都要跟着长，否则新日期只能靠 URL 深链看到。 */
+  function refreshDateOptions() {
+    const keys = Object.keys(DATA.days).filter((d) => (DATA.days[d].matches || []).length).sort().reverse();
+    if (!keys.length) return;
+    dates.length = 0;
+    keys.forEach((k) => dates.push(k));
+    const keep = sel.value || curDate;
+    sel.innerHTML = "";
+    keys.forEach((d) => {
+      const o = document.createElement("option");
+      o.value = d; o.textContent = d;
+      sel.appendChild(o);
+    });
+    curDate = keys.includes(keep) ? keep : (keys.includes(todayStr) ? todayStr : keys[0]);
+    sel.value = curDate;
+  }
+
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const parseScore = (s) => { const m = String(s || "").match(/(\d+)\s*[:：]\s*(\d+)/); return m ? [+m[1], +m[2]] : null; };
   const parseHandi = (wdl) => { const m = String(wdl || "").match(/([+-]\d+)/); return m ? +m[1] : 0; };
@@ -322,7 +374,7 @@
   function playCell(k, full, m, starHtml) {
     const raw = String(full == null ? "" : full).trim();
     if (!raw) return '<span class="miss-dim">—</span>';
-    const safe = (m.final.safe || []).includes(k) ? ' <span class="safe-star" title="稳健">★</span>' : '';
+    const safe = ((m.final && m.final.safe) || []).includes(k) ? ' <span class="safe-star" title="稳健">★</span>' : '';
     const items = raw.split("/").map((s) => s.trim()).filter((s) => s.length);
     if (!m.result) return esc(raw) + safe + (starHtml || "");
     /* 让球数统一以官方盘口 rq 为准（让1/让2/让3、受让都可能），由 evalItem 按是否“让”项决定使用 */
@@ -546,13 +598,17 @@
     const tbody = $("#summaryTable tbody");
     tbody.innerHTML = "";
     day.matches.forEach((m, idx) => {
+      /* 实时层会往当天 push 新场次，新场次只有赔率没有本地预测 → m.final 可能不存在。
+         ensureFinal 兜底成「赔率推导」预测，否则表格会在第一场新场次上抛错、只剩一行。 */
+      const fin = ensureFinal(m);
+      const autoTitle = fin.auto ? ' title="本场本地没有模型预测，按官方赔率隐含概率推导"' : "";
       const srcs = Object.keys(m.preds || {});
       const cons = {};
       ["wdl", "tg", "hf", "sc"].forEach((k) => { cons[k] = consensus(srcs.map((s) => m.preds[s][k])); });
       const tr = document.createElement("tr");
       tr.className = idx % 2 ? "band-b" : "band-a";
       if (m.result) tr.classList.add("settled");
-      const wdlColor = m.result ? "" : wdlClass(m.final.wdl); /* 开奖后改为复盘视图：绿圈/灰字 */
+      const wdlColor = m.result ? "" : wdlClass(fin.wdl); /* 开奖后改为复盘视图：绿圈/灰字 */
       const scoreLine = m.result
         ? `<div class="score-under"><span class="full-score">${esc(m.result.score)}</span>` +
           (m.result.half ? `<span class="half-score">(${esc(m.result.half)})</span>` : "") + "</div>"
@@ -576,10 +632,10 @@
       tr.innerHTML =
         `<td><span class="exp-ico">▾</span> ${esc(m.id)}</td><td>${esc(m.time)}</td><td>${esc(m.league)}</td>` +
         `<td class="home-away">${esc(m.home)} <span class="vs">VS</span> ${esc(m.away)}${scoreLine}${noteLine}${tagLine}</td>` +
-        `<td class="${wdlColor}">${playCell("wdl", m.final.wdl, m, star(cons.wdl))}${oddsLine}</td>` +
-        `<td>${playCell("tg", m.final.tg, m, star(cons.tg))}</td>` +
-        `<td>${playCell("hf", m.final.hf, m, star(cons.hf))}</td>` +
-        `<td class="score-line">${playCell("sc", m.final.sc, m, star(cons.sc))}</td>`;
+        `<td class="${wdlColor}"${autoTitle}>${playCell("wdl", fin.wdl, m, star(cons.wdl))}${oddsLine}</td>` +
+        `<td>${playCell("tg", fin.tg, m, star(cons.tg))}</td>` +
+        `<td>${playCell("hf", fin.hf, m, star(cons.hf))}</td>` +
+        `<td class="score-line">${playCell("sc", fin.sc, m, star(cons.sc))}</td>`;
       tr.addEventListener("click", () => toggleDetail(tr, m));
       /* 双击主客队单元格 → 编辑备注（行单击展开详情会在双击的两下单击里先开再关，
          dblclick 在 click 之后触发，所以最终行处于关闭状态，刚好交给编辑器） */
@@ -801,6 +857,7 @@
     const tbody = $("#compareTable tbody");
     tbody.innerHTML = "";
     day.matches.forEach((m, mi) => {
+      ensureFinal(m); /* 实时层新进的场次没有本地预测，按赔率兜底，避免对比表出现空白行 */
       ["wdl", "tg", "hf", "sc"].forEach((k, ri) => {
         const tr = document.createElement("tr");
         tr.className = mi % 2 ? "band-b" : "band-a";
@@ -829,10 +886,11 @@
             html += `<td class="pickable ${k === "wdl" ? wdlClass(v) : ""}" data-mi="${mi}" data-k="${k}" data-src="${esc(s)}" title="双击录入/修改预测">${esc(v) || "—"}</td>`;
           }
         });
-        const isSafe = (m.final.safe || []).includes(k);
-        const hasVal = m.final[k] && String(m.final[k]).trim();
+        const fin = m.final;
+        const isSafe = (fin.safe || []).includes(k);
+        const hasVal = fin[k] && String(fin[k]).trim();
         html += `<td class="mycell" data-mi="${mi}" data-k="${k}">` +
-          `<span class="my-val"${hasVal ? "" : ' title="双击模型格可录入预测"'}>${esc(m.final[k]) || "—"}</span>` +
+          `<span class="my-val"${hasVal ? "" : ' title="双击模型格可录入预测"'}>${esc(fin[k]) || "—"}</span>` +
           (hasVal ? `<span class="my-clear" data-mi="${mi}" data-k="${k}" title="清空该玩法预测">×</span>` : "") +
           `<span class="star-toggle ${isSafe ? "on" : ""}" data-mi="${mi}" data-k="${k}" title="感觉这项把握大？点★标记为稳健（再点取消）">★</span></td>`;
         tr.innerHTML = html;
@@ -1205,7 +1263,7 @@
         Object.keys(m.preds || {}).forEach((s) => {
           checkPred(m.preds[s], perSource[s] = perSource[s] || newStat(), m);
         });
-        const f = m.final || {};
+        const f = ensureFinal(m);
         const st = perSource["最终预测"] = perSource["最终预测"] || newStat();
         checkPred(f, st, m);
         ["wdl", "tg", "hf", "sc"].forEach((k) => {
@@ -2145,7 +2203,13 @@
       setInterval(autoCheck, POLL_MIN * 60000);
     } else if (typeof window.__REFRESH_LIVE === "function") {
       /* boot.js 每次拉完实时（成功或失败）都会发 live-updated，这里只负责重绘 */
-      window.addEventListener("live-updated", () => { renderDataStamp(); renderAll(); });
+      window.addEventListener("live-updated", () => {
+        /* 实时层可能刚带进一个新的业务日（跨零点后的次日盘口），先把日期下拉补全，
+           否则新日期只能靠 URL 深链看到，用户会以为「还是不更新」。 */
+        refreshDateOptions();
+        renderDataStamp();
+        renderAll();
+      });
       /* 演示站没有后端，靠浏览器直连体彩接口：每 6 分钟静默重拉一次赔率。
          页面隐藏时不打请求，切回前台立刻补一次，省流量也不浪费接口。 */
       const LIVE_MIN = 6;
