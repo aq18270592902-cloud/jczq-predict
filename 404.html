@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>404 · 页面不存在 — 竞足预测汇总</title>
 <meta name="robots" content="noindex,follow">
-<link rel="icon" href="/jczq-predict/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="192x192" href="/jczq-predict/icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/jczq-predict/icons/icon-180.png">
+<script>/* Pages 上 404 会在任意深度被返回，用 base 把相对路径钉到项目根；自有服务器直接相对即可 */
+if(/(^|\.)github\.io$/i.test(location.hostname))document.write('<base href="/jczq-predict/">');</script>
+<link rel="icon" href="./favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
 <meta name="theme-color" content="#2563eb">
 <style>
 :root{color-scheme:dark}
@@ -47,7 +49,7 @@ a:focus-visible{outline:2px solid #fff;outline-offset:3px}
     <p class="code">404</p>
     <h1>这个地址没有页面</h1>
     <p>链接可能过期，或者文件已经被移走。<br>回到首页就能继续看盘。</p>
-    <a href="/jczq-predict/">回到 竞足预测汇总</a>
+    <a href="./">回到 竞足预测汇总</a>
     <div class="links"><a href="https://github.com/aq18270592902-cloud/jczq-predict">仓库源码</a> · <a href="https://github.com/aq18270592902-cloud?tab=repositories">全部项目</a></div>
   </main>
 </body>
