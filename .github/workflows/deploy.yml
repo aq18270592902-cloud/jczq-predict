@@ -89,7 +89,7 @@ jobs:
           sshpass -e rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20" \
             --exclude 'users/' --exclude '.git/' --exclude 'node_modules/' --exclude '.github/' \
-            --exclude 'deploy/' --exclude 'docs/' --exclude '.env' \
+            --exclude 'docs/' --exclude '.env' \
             ./ "$USER@$HOST:/opt/jczq-predict/"
 
       - name: 重启服务并自测
@@ -102,13 +102,18 @@ jobs:
             set -e
             UNIT=/etc/systemd/system/jczq-predict.service
             if [ ! -f "$UNIT" ]; then
-              echo "首次部署：跑安装脚本"
-              bash /opt/jczq-predict/deploy/install.sh
+              if [ -f /opt/jczq-predict/deploy/install.sh ]; then
+                echo "首次部署：跑安装脚本"
+                bash /opt/jczq-predict/deploy/install.sh
+              else
+                echo "::error::没有 systemd unit，也没同步到 deploy/install.sh，无法自动首装"
+                exit 1
+              fi
             else
               chown -R jczq-predict:jczq-predict /opt/jczq-predict || true
               # 老服务补上 TRUST_PROXY，否则 nginx 反代下所有请求都算本机
-              if ! grep -q '^Environment=TRUST_PROXY=1' "$UNIT"; then
-                sed -i '/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1' "$UNIT"
+              if ! grep -q "^Environment=TRUST_PROXY=1" "$UNIT"; then
+                sed -i "/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1" "$UNIT"
                 systemctl daemon-reload
                 echo "已补 TRUST_PROXY=1"
               fi
@@ -116,12 +121,24 @@ jobs:
             fi
             sleep 3
             systemctl is-active jczq-predict
-            curl -fsS http://127.0.0.1:8765/api/status > /dev/null && echo "api/status OK"
-            # 经 nginx 再验一次（端口可能是 8082 或自动退让后的值）
-            if [ -f /etc/nginx/conf.d/jczq-predict.conf ]; then
-              LP=$(grep -oE "^[[:space:]]*listen[[:space:]]+[0-9]+" /etc/nginx/conf.d/jczq-predict.conf | head -1 | grep -oE "[0-9]+$")
-              LP=${LP:-8082}
-              echo "对外端口: $LP"
+            # 本机端口以 unit 里的 PORT= 为准（默认 8775，8765 可能被老版 pm2 占着）
+            NP=$(grep -oE "^Environment=PORT=[0-9]+" "$UNIT" | grep -oE "[0-9]+$")
+            NP=${NP:-8775}
+            echo "Node 监听端口: $NP"
+            curl -fsS "http://127.0.0.1:$NP/api/status" > /dev/null && echo "api/status OK"
+            # 经 nginx 再验一次：优先找反代到本 Node 端口的那个 server 块
+            CONF=""
+            for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+              [ -e "$f" ] || continue
+              grep -qE "proxy_pass[[:space:]]+http://127\.0\.0\.1:${NP}([^0-9]|$)" "$f" && { CONF="$f"; break; }
+            done
+            if [ -n "$CONF" ]; then
+              LP=$(grep -oE "^[[:space:]]*listen[[:space:]]+[0-9]+" "$CONF" | head -1 | grep -oE "[0-9]+$")
+              LP=${LP:-8766}
+              echo "对外端口: $LP (来自 $CONF)"
               curl -fsS -o /dev/null -w "nginx / => %{http_code}\n" "http://127.0.0.1:$LP/"
+              curl -fsS -o /dev/null -w "nginx /data.js => %{http_code}\n" "http://127.0.0.1:$LP/data.js"
+            else
+              echo "::warning::没找到反代到 127.0.0.1:${NP} 的 nginx 配置，跳过对外自测"
             fi
           '
