@@ -49,7 +49,7 @@
 </header>
 
 <div id="demoBar" class="demo-bar" hidden>
-  <b>演示模式</b> · 官方赛程 / 赛果 / 赔率由 GitHub Actions 每 30 分钟自动刷新，你看到的<b>就是最新数据</b>；
+  <b>演示模式</b> · 赔率每 6 分钟从<b>体彩官方接口</b>直连拉取，赛果由 GitHub Actions 每 30 分钟落盘（免费档可能降频）；
   你的预测与投注方案只存在本机浏览器里。想用账号同步：<code>node server.js</code> 后打开 http://127.0.0.1:8765
 </div>
 
@@ -63,7 +63,8 @@
 <div class="export-bar">
   <button id="btnSync" class="sync-btn">↻ 更新比赛数据</button>
   <span id="syncMsg" class="bar-hint"></span>
-  <span id="dataStamp" class="bar-hint" title="官方数据最近一次自动刷新时间（GitHub Actions 每 30 分钟一次）"></span>
+  <span id="liveBadge" class="bar-hint" title="体彩官方实时接口（webapi.sporttery.cn）最近一次拉取状态"></span>
+  <span id="dataStamp" class="bar-hint" title="静态底座最近一次落盘时间（GitHub Actions 定时刷新）"></span>
   <span style="flex:1"></span>
   <button id="btnShare" title="把当前页签 + 当前日期复制成一条链接">复制视图链接</button>
   <button id="btnExpExcel">导出 Excel</button>
@@ -260,14 +261,7 @@
      数据用 localStorage 承载，不登录、不请求 /api/*，方便直接看效果。 */
   if (/(^|\.)github\.io$/.test(location.hostname) || /[?&]demo=1/.test(location.search)) window.STATIC_DEMO = true;
 </script>
-<script src="data.js"></script>
-<script src="app.js"></script>
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  });
-}
-</script>
+<!-- boot.js 串行加载：data.js（静态底座）→ 体彩官方实时接口合并 → app.js；失败静默回退静态数据 -->
+<script src="boot.js"></script>
 </body>
 </html>
