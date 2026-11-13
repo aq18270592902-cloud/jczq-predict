@@ -159,13 +159,49 @@ function loadAppData() {
   return new Function('window', code + '\nreturn window.APP_DATA;')({});
 }
 
+const HEADER = '/* =========================================================\n'
+  + ' * 竞足预测汇总 - 数据文件\n'
+  + ' * 比赛列表/赛果/赔率由 fetch_official.js 自动拉取合并；preds（各模型预测）\n'
+  + ' * 与 final（最终预测，safe=稳健玩法）在模型对比页录入/点选后更新。result: {score:"2:1", half:"1:0"}\n'
+  + ' * 序列化约定：每场比赛压成一行，日期与 meta 保留缩进 —— 体积约为逐字段缩进的 46%，\n'
+  + ' * 且 diff 只落在真正变化的场次上，方便 review。\n'
+  + ' * ======================================================= */\n';
+
+/** 把 APP_DATA 序列化成「每场一行」的紧凑文本（仍是合法 JS，可被 vm / new Function 直接求值） */
+function serializeAppData(d) {
+  const out = [];
+  out.push('window.APP_DATA = {');
+  out.push('  "days": {');
+  const dates = Object.keys(d.days || {}).sort();
+  dates.forEach(function (dt, di) {
+    const day = d.days[dt] || {};
+    out.push('    ' + JSON.stringify(dt) + ': {');
+    // 保持字段原始顺序，只有 matches 展开成「每场一行」
+    Object.keys(day).forEach(function (k) {
+      if (k !== 'matches') {
+        out.push('      ' + JSON.stringify(k) + ': ' + JSON.stringify(day[k]) + ',');
+        return;
+      }
+      out.push('      "matches": [');
+      const ms = day.matches || [];
+      ms.forEach(function (m, mi) {
+        out.push('        ' + JSON.stringify(m) + (mi < ms.length - 1 ? ',' : ''));
+      });
+      out.push('      ]');
+    });
+    out.push('    }' + (di < dates.length - 1 ? ',' : ''));
+  });
+  out.push('  },');
+  out.push('  "meta": ' + JSON.stringify(d.meta || {}, null, 2).replace(/\n/g, '\n  '));
+  out.push('};');
+  return HEADER + out.join('\n') + '\n';
+}
+
 function saveAppData(d) {
-  const header = '/* =========================================================\n'
-    + ' * 竞足预测汇总 - 数据文件\n'
-    + ' * 比赛列表/赛果/赔率由 fetch_official.js 自动拉取合并；preds（各模型预测）\n'
-    + ' * 与 final（最终预测，safe=稳健玩法）在模型对比页录入/点选后更新。result: {score:"2:1", half:"1:0"}\n'
-    + ' * ======================================================= */\n';
-  fs.writeFileSync(DATA_FILE, header + 'window.APP_DATA = ' + JSON.stringify(d, null, 2) + ';\n');
+  // 原子写：先落 .tmp 再 rename，避免 server.js 定时刷新与手动脚本同时写时互相截断
+  const tmp = DATA_FILE + '.tmp';
+  fs.writeFileSync(tmp, serializeAppData(d));
+  fs.renameSync(tmp, DATA_FILE);
 }
 
 /* ---------- 500彩票网历史源：按业务日期补全已滚出澳客页面的场次 ---------- */
