@@ -1,0 +1,54 @@
+name: Bug 报告
+description: 页面打不开、数据不对、脚本报错
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前先确认 README 的「排障」一节是否已经覆盖。贴日志时**务必删掉 token / 密码 / cookie / 手机号**。
+  - type: input
+    id: where
+    attributes:
+      label: 出问题的地方
+      description: 页面 URL、本地路径，或脚本名
+      placeholder: https://aq18270592902-cloud.github.io/jczq-predict/ 或 http://47.121.140.215:8766/
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 你看到什么，期望看到什么
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 ...
+        2. 点击 ...
+        3. 出现 ...
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: Windows 11 / Chrome 131 / Node 20
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: 已删掉敏感信息
+      render: shell
+  - type: checkboxes
+    id: check
+    attributes:
+      label: 确认
+      options:
+        - label: 日志里没有 token、密码、cookie、手机号
+          required: true
+        - label: 已看过 README 的排障表
+          required: true
