@@ -310,6 +310,10 @@
       const isOther = (k) => /其他/.test(k);
       const concrete = lowKey(o.sc, null, (k) => !isOther(k) && (!side || side(k)));
       f.sc = concrete || lowKey(o.sc, null, side) || lowKey(o.sc);
+      /* 比分会落到具体分数时，总进球必须跟它一致 —— 否则同一行出现
+         「预测 1:0」又「预测总进球 2 球」，一眼就看出是机器瞎填的。 */
+      const mm = /^(\d+):(\d+)$/.exec(f.sc || "");
+      if (mm) f.tg = String(parseInt(mm[1], 10) + parseInt(mm[2], 10));
     }
     if (f.wdl || f.tg || f.hf || f.sc) f.auto = true;
     return f;
