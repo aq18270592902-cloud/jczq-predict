@@ -105,6 +105,11 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${APP_DIR}
+# 实测常驻 33MB / 刷新峰值 43MB RSS。上限 192M 是让它自己泄漏时被 systemd 重启，
+# 而不是涨到把整机吃光、被内核随机挑一个进程（小内存机器上通常是 mysqld）杀掉。
+MemoryHigh=160M
+MemoryMax=192M
+MemorySwapMax=64M
 
 [Install]
 WantedBy=multi-user.target
@@ -201,3 +206,25 @@ say "完成。浏览器打开 http://<服务器IP>:${WEB_PORT}/"
 say "检查状态：systemctl status ${APP_NAME} --no-pager"
 say "看日志：journalctl -u ${APP_NAME} -f"
 say "本机自测：curl -s http://127.0.0.1:${PORT}/api/status"
+
+# ------------------------------------------------------------
+# 小内存机器（≤2G）的两个常见坑，装完顺手看一眼，只提示不改：
+#   1) journald 不设上限会把 /var/log/journal 涨到几百 MB，挤占 buff/cache；
+#   2) vm.swappiness=0 时内核几乎不用 swap，内存一紧直接 OOM 挑进程杀。
+# 需要的话手动执行下面两条（幂等）：
+#   printf '[Journal]\nSystemMaxUse=200M\nSystemMaxFileSize=50M\n' \
+#     > /etc/systemd/journald.conf.d/00-size.conf && systemctl restart systemd-journald
+#   echo 'vm.swappiness = 10' > /etc/sysctl.d/99-swappiness.conf && sysctl --system
+# ------------------------------------------------------------
+if [ -r /proc/meminfo ]; then
+  MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
+  if [ "${MEM_MB:-0}" -le 2048 ]; then
+    J=$(journalctl --disk-usage 2>/dev/null | grep -oE '[0-9.]+[MG]' | head -1 || echo 0)
+    SW=$(cat /proc/sys/vm/swappiness 2>/dev/null || echo 0)
+    printf '\033[1;33m[!]\033[0m 本机内存 %sMB（偏小）。journal 占用 %s，vm.swappiness=%s\n' "$MEM_MB" "$J" "$SW"
+    # 注意：这里用 if 而不是 [ ] && printf —— set -e 下 && 左值失败会让整个脚本退出 1
+    if [ "$SW" = "0" ]; then
+      printf '\033[1;33m[!]\033[0m swappiness=0 在内存吃紧时容易触发 OOM，建议改成 10（见脚本末尾注释）\n'
+    fi
+  fi
+fi
