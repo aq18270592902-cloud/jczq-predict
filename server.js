@@ -176,6 +176,17 @@ const MIME = {
   '.svg': 'image/svg+xml'
 };
 
+/* 404 页面：有 404.html 就回整页（带样式与返回链接），没有就退回纯文本 */
+function send404(s) {
+  fs.readFile(path.join(root, '404.html'), (e, d) => {
+    if (e) { s.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return s.end('404 Not Found'); }
+    s.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    s.end(d);
+  });
+}
+
+
+
 const srv = http.createServer(async (q, s) => {
   const u = new URL(q.url, 'http://x');
   const p = u.pathname;
@@ -289,7 +300,7 @@ const srv = http.createServer(async (q, s) => {
     s.writeHead(404); return s.end('404');
   }
   fs.readFile(f, (e, d) => {
-    if (e) { s.writeHead(404); return s.end('404'); }
+    if (e) return send404(s);
     s.writeHead(200, {
       'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache, no-store, must-revalidate'
