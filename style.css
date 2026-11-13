@@ -357,8 +357,8 @@ td.picked.wdl-win, td.picked.wdl-draw, td.picked.wdl-loss { color: var(--acc); }
   color: #2563eb;
 }
 .card .lbl { color: var(--dim); font-size: 12px; margin-top: 3px; }
-h3 { margin: 20px 0 10px; color: #111827; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-h3::before { content: ""; width: 4px; height: 15px; border-radius: 3px; background: var(--grad-brand-soft); }
+h2 { margin: 20px 0 10px; color: #111827; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+h2::before { content: ""; width: 4px; height: 15px; border-radius: 3px; background: var(--grad-brand-soft); }
 table.stats td.hit { color: var(--loss); font-weight: 700; }
 table.stats td.miss { color: var(--dim); }
 
@@ -757,7 +757,7 @@ td.bc-status .del-model { float: right; }
   .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 12px 0; }
   .card { min-width: 0; padding: 12px 8px; }
   .card .num { font-size: 21px; }
-  h3 { font-size: 14px; margin: 16px 0 8px; }
+  h2 { font-size: 14px; margin: 16px 0 8px; }
 
   .hint { font-size: 11px; line-height: 1.6; }
 
