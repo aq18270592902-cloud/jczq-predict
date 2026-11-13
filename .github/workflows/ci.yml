@@ -44,7 +44,12 @@ jobs:
               if (!fs.existsSync(f)) { console.error("FAIL: 缺 " + f + "（" + label + "）"); bad++; }
             }
             if (!/rel="manifest"/.test(idx)) { console.error("FAIL: index.html 没有 rel=manifest"); bad++; }
-            if (!/serviceWorker/.test(idx)) { console.error("FAIL: index.html 没有注册 Service Worker"); bad++; }
+            /* SW 注册已从 index.html 移进 boot.js（串行加载完 app.js 才注册），
+             * 所以这里查 boot.js 而不是 index.html。 */
+            const bootSrc = fs.existsSync("boot.js") ? fs.readFileSync("boot.js", "utf8") : "";
+            if (!/serviceWorker/.test(idx) && !/serviceWorker/.test(bootSrc)) {
+              console.error("FAIL: index.html 与 boot.js 都没有注册 Service Worker"); bad++;
+            }
             const mf = JSON.parse(fs.readFileSync("manifest.webmanifest", "utf8"));
             if (!mf.name || !mf.start_url || !Array.isArray(mf.icons) || mf.icons.length < 2) {
               console.error("FAIL: manifest 字段不全（name/start_url/icons≥2）"); bad++;
