@@ -199,6 +199,20 @@ echo "ADMIN_TOKEN=$(openssl rand -hex 16)" | sudo tee -a /opt/jczq-predict/.env
 sudo systemctl restart jczq-predict
 ```
 
+> **当前这台服务器已经配好了**（2026-11-13）：`/opt/jczq-predict/.env` 存在，权限 `600`，属主 `jczq-predict`，里面是 `ADMIN_TOKEN=<32 字节 hex>`。
+> Token 值不入库，存在本地 `_tools/_jczq_admin.txt` 与服务器该文件里。验证：
+
+```bash
+# 服务器上：应返回 200
+curl -s -o /dev/null -w '%{http_code}\n' -H "X-Admin-Token: $(grep ^ADMIN_TOKEN /opt/jczq-predict/.env | cut -d= -f2)" http://127.0.0.1:8775/api/update
+
+# 本机：不带 Token 必须 403，带对的必须 200
+curl -s -o /dev/null -w '%{http_code}\n' http://47.121.140.215:8766/api/update
+curl -s -o /dev/null -w '%{http_code}\n' -H "X-Admin-Token: <token>" http://47.121.140.215:8766/api/update
+```
+
+> `deploy.yml` 的 rsync 带 `--exclude .env`，重新部署不会覆盖它；`.env` 也从不进 git。
+
 > **反代关键项 `TRUST_PROXY=1`**：挂了 nginx 之后，所有请求的 socket 地址都是 `127.0.0.1`，如果不还原 `X-Forwarded-For`，「本机免鉴权」就等于全网免鉴权。`install.sh` 已经写进 service 文件；手工改过 unit 的老部署，`deploy.yml` 会自动补一行 `Environment=TRUST_PROXY=1`。
 >
 > `HOST` 默认 `127.0.0.1`（只给 nginx 用）。改成 `0.0.0.0` 直接对外时，**没配 ADMIN_TOKEN 会拒绝启动**。
