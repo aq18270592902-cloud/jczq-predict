@@ -27,7 +27,7 @@
       var m = /[?&]v=([^&]+)/.exec(src);
       if (m) return decodeURIComponent(m[1]);
     } catch (e) {}
-    return "20261113c";
+    return "20261113d";
   })();
 
   var LIVE_URL = "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry"
