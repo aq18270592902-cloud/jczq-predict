@@ -14,6 +14,12 @@
 (function () {
   "use strict";
 
+  /* 发版标记：改它等于强制所有访客重新拉 data.js / app.js。
+     GitHub Pages 对静态资源给 Cache-Control: max-age=600，浏览器 HTTP 缓存
+     会在这 10 分钟内继续吐旧 app.js —— 只靠 SW 换 CACHE 版本号治不了这一层，
+     必须让 URL 本身变掉。 */
+  var BUILD = "20261113a";
+
   var LIVE_URL = "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry"
     + "?poolCode=hhad,had,crs,ttg,hafu,sxds&channel=c";
   var LIVE_TIMEOUT = 6000;
@@ -290,10 +296,12 @@
   }
 
   /* ---------- 顺序加载 ---------- */
-  function loadScript(src) {
+  /* ver 为空表示不加版本参数（data.js 自己带时间桶，见 boot()） */
+  function loadScript(src, ver) {
     return new Promise(function (resolve, reject) {
       var s = document.createElement("script");
-      s.src = src;
+      var q = ver ? (src.indexOf("?") < 0 ? "?" : "&") + "v=" + ver : "";
+      s.src = src + q;
       s.async = false;
       s.onload = function () { resolve(src); };
       s.onerror = function () { reject(new Error("脚本加载失败: " + src)); };
@@ -301,12 +309,18 @@
     });
   }
 
+  /* data.js 每 30 分钟被 Actions 改写，不能钉死版本号，否则 10 分钟 HTTP 缓存期内
+     永远拿旧赛果；用 5 分钟时间桶，既能命中缓存又不至于让赛果落后太久。 */
+  function dataVer() {
+    return "d" + Math.floor(Date.now() / 300000);
+  }
+
   function boot() {
-    loadScript("data.js").then(function () {
+    loadScript("data.js", dataVer()).then(function () {
       /* 实时是增强项：失败也继续，绝不能把页面卡死 */
       return refreshLive().catch(function () { return false; });
     }).then(function () {
-      return loadScript("app.js");
+      return loadScript("app.js", BUILD);
     }).then(function () {
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js").catch(function () {});
