@@ -59,7 +59,9 @@ jobs:
 
             /* 实时层契约：index.html 只能引 boot.js（它负责串行加载 data.js → 实时合并 → app.js），
              * 不能再直接引 data.js / app.js，否则实时层被绕过。 */
-            if (!/src="boot\.js"/.test(idx)) { console.error("FAIL: index.html 没有引 boot.js"); bad++; }
+            /* 允许带版本号：src="boot.js?v=20261113c" —— 版本号是发版时唯一的改动点，
+             * 用来击穿 GitHub Pages 的 max-age=600，不能因为带了 ?v= 就判红。 */
+            if (!/src="boot\.js(\?[^"]*)?/.test(idx)) { console.error("FAIL: index.html 没有引 boot.js"); bad++; }
             if (/src="app\.js"/.test(idx)) { console.error("FAIL: index.html 直接引了 app.js，会绕过实时层"); bad++; }
             if (/src="data\.js"/.test(idx)) { console.error("FAIL: index.html 直接引了 data.js，会绕过实时层"); bad++; }
             if (!fs.existsSync("boot.js")) { console.error("FAIL: 缺 boot.js"); bad++; }
