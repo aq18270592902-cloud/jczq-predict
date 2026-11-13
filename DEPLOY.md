@@ -98,7 +98,36 @@ curl -sI http://127.0.0.1:8766/            # 经 nginx 自测（端口以 instal
 curl -s  http://127.0.0.1:8766/api/status  # 经 nginx 看刷新状态
 ```
 
+### 小内存机器（≤2G）必看
+
+实测这套服务本身很省：Node 常驻 **33MB**，刷新数据全程峰值 **43MB**，无泄漏。真正把 1.6G 机器压垮的是同机其它进程（典型是 mysqld 涨到 380MB），加上默认 `vm.swappiness=0` —— 内核几乎不动 swap，内存一紧就直接 OOM 挑进程杀。
+
+`install.sh` 已经给 unit 加了上限，装完还会自检并打印提示：
+
+| 项 | 值 | 作用 |
+|---|---|---|
+| `MemoryHigh` | 160M | 超过开始回收，服务变慢但不被杀 |
+| `MemoryMax` | 192M | 硬上限，泄漏时被 systemd 重启，不会拖死整机 |
+| `MemorySwapMax` | 64M | 允许溢出到 swap，避免硬 OOM |
+
+两条建议（幂等，装完手动跑一次即可）：
+
+```bash
+# journal 默认无上限，实测能涨到 361MB，压到 104MB
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=200M\nSystemMaxFileSize=50M\nMaxRetentionSec=30day\n' \
+  > /etc/systemd/journald.conf.d/00-size.conf
+systemctl restart systemd-journald
+
+# swappiness 0 -> 10：内存吃紧时先用 swap 顶，而不是直接 OOM
+echo 'vm.swappiness = 10' > /etc/sysctl.d/99-swappiness.conf
+sysctl --system
+```
+
+> `swappiness` 要写进 `/etc/sysctl.d/`，只改 `/etc/sysctl.conf` 的话，同机面板（宝塔/阿里云镜像）自带的 `99-*.conf` 会在开机时把它覆盖回 0。
+
 ---
+
 
 ## 方式 B · GitHub Actions 自动部署
 
@@ -260,6 +289,9 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "X-Admin-Token: <token>" http://47.1
 | 响应头里 `Cache-Control` 出现两次（如 `no-cache, no-cache`） | nginx 的 `add_header` 与 `server.js` 各发了一次 | 删掉 nginx 里那条 `add_header`，缓存策略统一由 `server.js` 的 `cacheControlFor()` 决定 |
 | `curl -I` 看不到 `content-encoding: gzip` | 没带 `Accept-Encoding`，或响应小于 `gzip_min_length` | `curl -sI -H 'Accept-Encoding: gzip' http://127.0.0.1:8766/`，小文件不压是正常的 |
 | 点「更新比赛数据」返回 403 | 未登录且没配 ADMIN_TOKEN | 登录后再点，或在 `.env` 配 `ADMIN_TOKEN` |
+| `/robots.txt`、`/sitemap.xml` 返回 `application/octet-stream` | `server.js` 的 MIME 表没有该扩展名 | 本仓库的 `server.js` 已补 `.txt`/`.xml`；自己改过的话照抄 `MIME` 表 |
+| 服务被 `systemctl` 反复重启 | 撞到 `MemoryMax=192M` | `systemctl show jczq-predict -p MemoryPeak` 看峰值；正常 43MB，持续顶满说明有泄漏 |
+| `journalctl` 里出现 `Killed process ... (mysqld)` | 整机 OOM，跟本项目无关 | 按上面「小内存机器必看」调 `swappiness` 与 journal 上限 |
 | 外网能直接触发 `/api/update` | unit 里缺 `TRUST_PROXY=1` | `sed -i '/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1' /etc/systemd/system/jczq-predict.service && systemctl daemon-reload && systemctl restart jczq-predict` |
 
 ---
