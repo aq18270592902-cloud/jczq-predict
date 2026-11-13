@@ -37,12 +37,26 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- data.js; then
-            echo "数据无变化，跳过提交"
-            exit 0
-          fi
-          git add data.js
-          git commit -m "chore(data): 自动刷新官方赛程赛果 $(date -u +%Y-%m-%dT%H:%MZ)"
+
+          # 服务器每 2 小时也会把 data.js 回推 main（见 DEPLOY.md「第四层」），
+          # 所以本地和远端可能同时改动同一个文件。策略：提交后 push 失败就
+          # 丢掉本次提交、重置到远端最新、重抓一次再提交——最终一定是一致的。
           for i in 1 2 3; do
-            git push && break || sleep 5
+            if git diff --quiet -- data.js; then
+              echo "数据无变化，跳过提交"
+              exit 0
+            fi
+            git add data.js
+            git commit -m "chore(data): 自动刷新官方赛程赛果 $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git push; then
+              echo "推送成功（第 $i 次尝试）"
+              exit 0
+            fi
+            echo "第 $i 次推送失败，重置到远端最新后重抓"
+            git fetch origin main
+            git reset --hard origin/main
+            node fetch_official.js
+            sleep 5
           done
+          echo "::error::连续 3 次推送失败"
+          exit 1
