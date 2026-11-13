@@ -344,5 +344,6 @@ node server.js
 
 ## 其他项目
 
-- [永劫无间 · 技能随机转盘](https://aq18270592902-cloud.github.io/naraka-skill-spinner/) —— 抽英雄 / F 技能 / V 奥义，纯前端转盘，断网也能转
+- [绘梦工坊 Studio](https://github.com/aq18270592902-cloud/huimeng-studio) —— 文生图 / 文生视频的网页工作台
+- [租号么 · 数据浏览器](https://github.com/aq18270592902-cloud/zuhaome-db) —— 游戏账号数据检索面板
 - [竞足预测汇总](https://aq18270592902-cloud.github.io/jczq-predict/?demo=1&tab=summary) —— 官方赛程赛果 + 多源预测对比 + 命中率复盘（就是本仓库，[部署文档](DEPLOY.md)）
