@@ -279,10 +279,16 @@ node server.js
 
 `/api/update` 以前是裸奔的（任何访问者都能触发抓取）。现在的规则：
 
+放行条件是**三选一**（任一成立即通过）：
+
 | 调用来源 | 未设 `ADMIN_TOKEN` | 已设 `ADMIN_TOKEN` |
 |---|---|---|
-| 本机回环 `127.0.0.1` | 放行 | 放行（页面上的「↻ 更新比赛数据」按钮走这条） |
-| 外部来源 | 403 | 必须带 `X-Admin-Token` 且匹配 |
+| 本机回环 `127.0.0.1` | 放行 | 放行 |
+| 已登录用户（带 cookie 登录态） | 放行 | 放行（页面上的「↻ 更新比赛数据」按钮走这条） |
+| 带正确 `X-Admin-Token` | 无此路 | 放行（脚本 / 外部调用） |
+| 其他 | 403 | 403 |
+
+> 挂了 nginx 之后所有请求的 socket 都是 `127.0.0.1`，必须设 `TRUST_PROXY=1` 让服务从 `X-Real-IP` 还原真实来源，否则「本机免鉴权」等于全网免鉴权。
 
 ```bash
 # 启动时指定
@@ -294,8 +300,18 @@ ADMIN_TOKEN=你的随机串
 ```
 
 ```bash
-curl -X POST -H "X-Admin-Token: 你的随机串" http://127.0.0.1:8765/api/update
+# 本机直打（不需要 Token）
+curl -s http://127.0.0.1:8775/api/update
+
+# 从外网打（需要 Token）
+curl -s -H "X-Admin-Token: 你的随机串" http://<服务器IP>:8766/api/update
+
+# 只看状态，不触发刷新
+curl -s http://127.0.0.1:8775/api/status
+# {"updating":false,"lastAt":1794573202369,"lastOk":true,"ageMin":5}
 ```
+
+> 当前线上那台服务器已配好 `/opt/jczq-predict/.env`（权限 600，`ADMIN_TOKEN=<32 字节 hex>`），远程刷新可用。Token 值不入库，只在服务器该文件与本地 `_tools/_jczq_admin.txt` 里。
 
 ## 监听地址
 
@@ -328,7 +344,7 @@ node server.js
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| 端口占用无反应 | 已有实例在跑 | 服务遇到 `EADDRINUSE` 静默退出，先 `taskkill /F /IM node.exe`；Linux 上 `ss -lntp | grep 8765` 看谁占着 |
+| 端口占用无反应 | 已有实例在跑 | 服务遇到 `EADDRINUSE` 静默退出，先 `taskkill /F /IM node.exe`；Linux 上 `ss -lntp | grep 8775`（或你设的 `PORT`）看谁占着 |
 | 页面数据不更新 | 抓取失败 | `/api/status` 看 `lastOk`，手动跑 `node fetch_official.js` 看报错 |
 | 中文乱码 | GBK 未解码 | 确认走的是 `TextDecoder('gbk')` 分支，不是 `r.text()` |
 | 登录后立刻掉线 | 服务重启 | session 在内存，重启后需重新登录 |
