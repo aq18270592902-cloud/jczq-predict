@@ -35,19 +35,19 @@
 
 **每日汇总** —— 赛程、让球、赔率、赛果一屏看完，每个玩法后面跟「我的预测」，命中自动描绿。
 
-![每日汇总](docs/screenshots/01-summary.png)
+![每日汇总](docs/screenshots/01-summary.webp)
 
 **模型对比** —— 你录入的每个预测源一列，分歧场次一眼能看出，右侧是最终决策。
 
-![模型对比](docs/screenshots/02-compare.png)
+![模型对比](docs/screenshots/02-compare.webp)
 
 **投注方案** —— 左边点玩法加进投注单，右边自动算过关方式与理论奖金，存下来的方案自动结算。
 
-![投注方案](docs/screenshots/03-bets.png)
+![投注方案](docs/screenshots/03-bets.webp)
 
 **历史统计** —— 记录天数 / 总场次 / 已开奖 / 命中率四张卡，下面是每个来源的准确率和每日复盘。
 
-![历史统计](docs/screenshots/04-stats.png)
+![历史统计](docs/screenshots/04-stats.webp)
 
 ---
 
