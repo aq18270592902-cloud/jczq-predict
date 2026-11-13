@@ -19,7 +19,7 @@
 > 之后每 6 分钟静默刷新一次，不用等 GitHub Actions。赛果仍由 Actions 落盘。
 > 账号同步、投注记录、导出这些要本地 `node server.js` 才有。
 >
-> 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。默认对外端口 **8082**（80 与 8080 已被同机别的站点占用，脚本会自动往后找空闲端口），Node 进程监听 `127.0.0.1:8765`。
+> 要挂到自己服务器上（systemd + nginx + Actions 自动部署），看 **[DEPLOY.md](DEPLOY.md)**。线上对外端口 **8766**，Node 进程在 `127.0.0.1:8775`（`Environment=PORT=8775`；`server.js` 不设 `PORT` 时默认 8765，本地开发用这个）。
 
 ## 快捷入口
 
@@ -71,7 +71,7 @@
 
 ```bash
 node server.js
-# 打开 http://127.0.0.1:8765
+# 打开 http://127.0.0.1:8765（本地默认端口；服务器上用 PORT=8775）
 ```
 
 Windows 双击 `启动网页服务.vbs` 静默启动（无黑窗）。开机自启：把该 vbs 的快捷方式丢进 `shell:startup`。
