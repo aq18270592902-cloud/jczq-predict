@@ -184,11 +184,60 @@ push 到 `main` 自动跑；也可以 Actions 页 → deploy → Run workflow �
 | 实时层 | 访客浏览器（`boot.js`） | 打开页面 + 每 6 分钟 | 当天在售场次的全部赔率 | 照常工作 |
 | 服务端 | `server.js`（systemd） | 启动 8 秒后 + 每 2 小时 | 赛程 / 赛果 / 历史赔率，写 `data.js` | 停摆，只剩实时层 |
 | Actions | `refresh-data.yml` | cron `*/30`（免费档可能 4~5 小时） | 同服务端，写进仓库 `data.js` | 照常工作 |
+| **回推** | `server.js` → GitHub Contents API | 每次服务端刷新成功后 | 把服务器刚写好的 `data.js` 推回仓库，触发 Pages 重建 | 停摆，退回 Actions 那一层 |
 
 三者写的是同一份 `data.js` 结构，前端合并时按「赛果 > 服务端/Actions 底座 > 实时赔率」的优先级处理：
 **已完场的场次，赔率与赛果都不许被实时层覆盖**（见 `boot.js` 的 `mergeLive()`）。
 
 > 服务器长期不通外网（或 okooo.com 被墙）时，第一层照样能用 —— 这是部署到服务器后「数据还是最新的」的兜底。
+
+### 第四层 · 服务器回推（让 Pages 与服务器同源）
+
+GitHub Actions 的 `*/30` cron 在免费档会被降频（实测两次间隔 4.7~7.2 小时），而服务器是准点 2 小时一次，
+所以**过去 Pages 的数据天然比服务器旧几个小时**。开启回推后这个差距消失：
+
+```
+服务器 doUpdate() 成功
+  └─ pushDataToGitHub()
+       ├─ GET  /contents/data.js  → 取当前 sha
+       ├─ 比 git blob sha         → 一样就跳过（不产生空提交）
+       └─ PUT  /contents/data.js  → 推送 + 触发 Pages 构建
+```
+
+**开启方式**（只需在 `/opt/jczq-predict/.env` 里加两行，不配则完全不联网、零行为变化）：
+
+```bash
+# fine-grained token，权限只要 Contents: Read and write（仓库选 jczq-predict）
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+GITHUB_REPO=aq18270592902-cloud/jczq-predict
+# 可选，默认就是这两个
+# GITHUB_PATH=data.js
+# GITHUB_BRANCH=main
+```
+
+改完 `systemctl restart jczq-predict`。想确认开没开：
+
+```bash
+curl -s http://127.0.0.1:8775/api/status | python3 -m json.tool
+```
+
+返回里的 `github` 字段就是回推状态：
+
+| 字段 | 含义 |
+|---|---|
+| `enabled` | 是否配了 token + repo |
+| `at` / `ok` | 上次回推的时间与结果 |
+| `msg` | 一句话：`已推送 260148B @ eb129aa` / `内容一致，无需推送` / 具体报错 |
+| `sha` | 推送后仓库里 data.js 的 blob sha |
+
+日志里看 `journalctl -u jczq-predict | grep github`，成功是 `[github] OK 已推送 260148B @ eb129aa`。
+
+**回推失败不影响服务器本地数据**——刷新结果先落盘，回推是刷新成功之后的独立步骤，异常只写进
+`state.ghMsg`，`/api/status` 能看到，主流程照常。
+
+**这时 Actions 那层还要不要留？** 要。它是「服务器挂了 / 没部署」时的兜底。两层同时写同一个文件
+不会打架：回推前会先比 blob sha，内容一样直接跳过；两边恰好同时推，后到的那次会拿到 409，
+脚本自动重取 sha 再重试（最多 3 次）。
 
 ### ⚠️ 不要在同一台服务器上再挂 cron 刷 data.js
 
