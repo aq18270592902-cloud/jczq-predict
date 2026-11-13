@@ -69,6 +69,22 @@ sudo bash deploy/install.sh
 3. 写 `/etc/systemd/system/jczq-predict.service` 并启动，设了开机自启
 4. 写 `/etc/nginx/conf.d/jczq-predict.conf`，对外监听 **8766**（被占用则自动顺延），反代到 `127.0.0.1:8775`，reload nginx；**如果已经存在反代到 8775 的 nginx 配置（例如现网的 `sites-available/ccss`），脚本会直接复用它并退出，不新建文件**
 
+### nginx 层做了什么（新建与复用两种路径都覆盖）
+
+| 项 | 值 | 为什么 |
+|---|---|---|
+| `gzip` | `on` / `comp_level 6` / `min_length 1024` | 首页 14KB→4.8KB、`data.js` 254KB→41KB。**别关**，移动网络上是 5 倍差距 |
+| `gzip_types` | 含 `application/json`、`image/svg+xml` | 默认只压 `text/html`，JSON 不压等于白传 |
+| `X-Content-Type-Options` | `nosniff` | 防止浏览器把上传的文件当脚本执行 |
+| `X-Frame-Options` | `SAMEORIGIN` | 防点击劫持（页面套 iframe 骗点击） |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | 跨站时不泄露完整 URL |
+| `Permissions-Policy` | 关掉 geolocation / microphone / camera / payment | 本站一个都不用 |
+| `Cross-Origin-Opener-Policy` | `same-origin` | 隔离 opener，防跨窗口引用 |
+
+**复用已有 conf 的路径**（现网就是这种：老配置在 `sites-available/ccss`）不会整份覆盖，只调 `harden_conf()` 做**幂等注入**：先 `cp` 备份成 `*.bak.<时间戳>`，再用 `awk` 在第一个 `server {` 之后插入 gzip 与安全头；文件里已经有 `X-Content-Type-Options` 就整段跳过，重复跑不会有副作用。
+
+> GitHub Pages 版没有自定义响应头能力，安全头只能靠 `<meta http-equiv>` 兜底；服务器版这里给的是真 HTTP 头，比 meta 更可靠（meta 的 CSP / referrer 对非 HTML 资源无效）。
+
 跑完打开 `http://<服务器IP>:8766/` 就是成品。想换端口就 `sudo WEB_PORT=<端口> bash deploy/install.sh`。
 
 ### 常用命令
@@ -241,6 +257,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "X-Admin-Token: <token>" http://47.1
 | `deploy` workflow 一直 skipped | 没配 Secrets | 按上面方式 B 第 1 步配齐 |
 | `EADDRINUSE` 静默退出 | 已有实例在跑 | 正常行为，先 `systemctl stop jczq-predict` 再启动 |
 | 访问端口打开的是别的项目 | `conf.d` 里另一个站点也 `listen` 同端口且 `server_name _` | 重跑 `install.sh`（会自动换端口并打印实际值），或手改 `listen` |
+| 响应头里 `Cache-Control` 出现两次（如 `no-cache, no-cache`） | nginx 的 `add_header` 与 `server.js` 各发了一次 | 删掉 nginx 里那条 `add_header`，缓存策略统一由 `server.js` 的 `cacheControlFor()` 决定 |
+| `curl -I` 看不到 `content-encoding: gzip` | 没带 `Accept-Encoding`，或响应小于 `gzip_min_length` | `curl -sI -H 'Accept-Encoding: gzip' http://127.0.0.1:8766/`，小文件不压是正常的 |
 | 点「更新比赛数据」返回 403 | 未登录且没配 ADMIN_TOKEN | 登录后再点，或在 `.env` 配 `ADMIN_TOKEN` |
 | 外网能直接触发 `/api/update` | unit 里缺 `TRUST_PROXY=1` | `sed -i '/^Environment=HOST=127.0.0.1/a Environment=TRUST_PROXY=1' /etc/systemd/system/jczq-predict.service && systemctl daemon-reload && systemctl restart jczq-predict` |
 
