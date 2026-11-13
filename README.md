@@ -104,7 +104,7 @@ jczq-predict/
 ├─ 404.html           # 自定义 404 页（GitHub Pages 会自动接管）
 ├─ .nojekyll          # 跳过 Jekyll，保证以 . 开头的目录原样发布
 ├─ .gitattributes     # 统一换行符（ps1/bat 保持 CRLF，sh 保持 LF）
-├─ .github/workflows/ # ci.yml / refresh-data.yml / deploy.yml
+├─ .github/workflows/ # ci.yml / refresh-data.yml / deploy.yml / pages-guard.yml
 ├─ deploy/install.sh  # 服务器一键安装（systemd + nginx）
 ├─ DEPLOY.md          # 部署文档
 ├─ users/             # 用户数据，含密码哈希，已 gitignore
