@@ -99,6 +99,17 @@ jobs:
             curl -s -o /dev/null -w "$p status=%{http_code}\n" "http://127.0.0.1:8765/$p"
           done
 
+          echo "--- 文本类 Content-Type（robots/sitemap 类型错了搜索引擎会跳过） ---"
+          for pair in "robots.txt:text/plain" "sitemap.xml:application/xml" "VERSION:text/plain"; do
+            p="${pair%%:*}"; want="${pair##*:}"
+            got=$(curl -s -o /dev/null -w "%{content_type}" "http://127.0.0.1:8765/$p")
+            echo "$p -> $got"
+            case "$got" in
+              *"$want"*) ;;
+              *) echo "FAIL: $p 的 Content-Type 应含 $want，实际 $got"; kill $SRV; exit 1 ;;
+            esac
+          done
+
           echo "--- 敏感路径必须 404 ---"
           for p in users/13800138000.json keys.json .env; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8765/$p")
