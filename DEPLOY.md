@@ -7,19 +7,18 @@
 | **A · 手动一条命令** | 第一次部署、想马上看到效果 | 能 ssh 上去 | 改完代码再跑一次 `bash deploy/install.sh` |
 | **B · GitHub Actions 自动** | 以后不想管 | 仓库 Secrets 三个 | push 到 main 自动部署 |
 
-**端口分配**（默认值，可用环境变量覆盖）：
+**端口分配**（当前线上实际值）：
 
 | 站点 | 对外端口 | 变量 | 本机监听 | 说明 |
 |---|---|---|---|---|
-| 已有站点（视频专区） | 80 | — | — | 已经占着，不要动 |
-| 已有站点（Next.js） | 8080 | — | — | 已经占着，不要动 |
-| naraka-skill-spinner（纯静态） | **8081** | `PORT=8081` | nginx 直接读盘 | |
-| jczq-predict（Node 服务） | **8082** | `WEB_PORT=8082` | Node 在 `127.0.0.1:8765`，nginx 反代 | |
+| 视频专区（老站） | 80 | — | — | 已占用，不要动 |
+| Next.js 站（老站） | 8080 | — | — | 已占用，不要动 |
+| 老版竞足 ccss（pm2，仅回滚） | 8765 | — | `0.0.0.0:8765` | 只留作回滚，新版不碰它 |
+| **jczq-predict（当前线上）** | **8766** | `WEB_PORT=8766` | Node 在 `127.0.0.1:8775`，nginx 反代 | 访问地址 `http://<服务器IP>:8766/` |
 
-所以装完两个站，访问地址是：
+阿里云安全组只放行 **22 / 80 / 8080 / 8766 / 8805** —— 换端口前先去控制台加规则，否则外网打不开。
 
-- 转盘 → `http://<服务器IP>:8081/`
-- 竞足 → `http://<服务器IP>:8082/`
+本机 8775 与 8765 差 10，是故意的：老 pm2 进程 `ccss` 一直占着 8765，新版换到 8775 才能两个同时活着、随时切回。
 
 `install.sh` 装之前做两层检测，任一命中就自动往后找空闲端口（最多试 20 个）并打印实际值：
 
@@ -68,9 +67,9 @@ sudo bash deploy/install.sh
 1. 建系统用户 `jczq-predict`（不给登录 shell）
 2. 把代码同步到 `/opt/jczq-predict`（**保留服务器上已有的 `users/` 和 `.env`**）
 3. 写 `/etc/systemd/system/jczq-predict.service` 并启动，设了开机自启
-4. 写 `/etc/nginx/conf.d/jczq-predict.conf`，对外监听 **8082**（被占用则自动顺延），反代到 `127.0.0.1:8765`，reload nginx
+4. 写 `/etc/nginx/conf.d/jczq-predict.conf`，对外监听 **8766**（被占用则自动顺延），反代到 `127.0.0.1:8775`，reload nginx；**如果已经存在反代到 8775 的 nginx 配置（例如现网的 `sites-available/ccss`），脚本会直接复用它并退出，不新建文件**
 
-跑完打开 `http://<服务器IP>:8082/` 就是成品。想换端口就 `sudo WEB_PORT=<端口> bash deploy/install.sh`。
+跑完打开 `http://<服务器IP>:8766/` 就是成品。想换端口就 `sudo WEB_PORT=<端口> bash deploy/install.sh`。
 
 ### 常用命令
 
@@ -78,8 +77,9 @@ sudo bash deploy/install.sh
 systemctl status jczq-predict --no-pager   # 看状态
 journalctl -u jczq-predict -f              # 看实时日志
 systemctl restart jczq-predict             # 重启
-curl -s http://127.0.0.1:8765/api/status   # 本机自测
-curl -sI http://127.0.0.1:8082/            # 经 nginx 自测（端口以 install.sh 打印的为准）
+curl -s http://127.0.0.1:8775/api/status   # 本机自测（Node 直连）
+curl -sI http://127.0.0.1:8766/            # 经 nginx 自测（端口以 install.sh 打印的为准）
+curl -s  http://127.0.0.1:8766/api/status  # 经 nginx 看刷新状态
 ```
 
 ---
@@ -105,15 +105,13 @@ push 到 `main` 自动跑；也可以 Actions 页 → deploy → Run workflow �
 1. 语法自检（`node --check` 三个 js + `scripts/verify-data.js`）
 2. `rsync` 同步代码到 `/opt/jczq-predict`（排除 `users/`、`.env`、`.git/`）
 3. ssh 上去判断：没装过就跑 `deploy/install.sh`，装过就 `systemctl restart`
-4. `curl http://127.0.0.1:8765/api/status` 自测，不通则 workflow 红
+4. 从 systemd unit 里读 `Environment=PORT=` 得到本机端口（默认 8775），再遍历 nginx 配置找反代到该端口的 `listen` 端口（默认 8766），两个都 curl 一遍，不通则 workflow 红
 
 **没配 Secrets 时整个 deploy job 会自动跳过**，不会报红。
 
 ---
 
-## 数据怎么保持最新（两条独立通路）
-
-部署到服务器后，数据有**两层**，互相不依赖：
+## 数据怎么保持最新（三层，互不依赖）
 
 ### 第一层 · 浏览器实时赔率（不依赖服务器抓取）
 
@@ -125,9 +123,14 @@ push 到 `main` 自动跑；也可以 Actions 页 → deploy → Run workflow �
 服务器上的 `server.js` 自己会刷：
 
 - 启动 **8 秒后**拉一次官方数据
-- 之后**每 2 小时**拉一次
+- 之后**每 2 小时**拉一次（`const INTERVAL = 2 * 60 * 60 * 1000`）
 - 数据源：澳客竞彩在售页 + 赛果大厅 + 体彩官方赔率接口
 - 拉完直接写回 `/opt/jczq-predict/data.js`，前端下次刷新就是新数据
+
+### 第三层 · GitHub Actions 落盘
+
+`refresh-data.yml` cron `*/30`（免费档实际可能 4~5 小时一次），写的是仓库里的 `data.js`，
+再由 Pages / deploy 同步到线上。它覆盖的是「服务器没部署时也能有赛果」这个场景。
 
 ### 三层来源对照
 
@@ -142,16 +145,42 @@ push 到 `main` 自动跑；也可以 Actions 页 → deploy → Run workflow �
 
 > 服务器长期不通外网（或 okooo.com 被墙）时，第一层照样能用 —— 这是部署到服务器后「数据还是最新的」的兜底。
 
+### ⚠️ 不要在同一台服务器上再挂 cron 刷 data.js
+
+`server.js` 已经每 2 小时写一次 `data.js`。再挂一个 `crontab` 跑 `fetch_official.js` 就是**两个写者抢同一个文件**：
+
+- 可能读到对方写了一半的内容（`fs.writeFileSync` 不是原子替换）
+- 两边各自 `readFileSync` 旧内容再整体写回，后写的会把先写的更新**覆盖掉**
+
+要手动刷，用 `/api/update`（有并发锁 `state.updating`，不会双跑），不要用 cron。
+
+真需要脱离 `server.js` 单独定时刷（例如服务停了也要刷），用仓库里的兜底脚本，它自带备份 + 校验 + 失败回滚：
+
+```bash
+bash /opt/jczq-predict/scripts/refresh.sh          # 手动刷一次
+tail -n 40 /var/log/jczq-refresh.log               # 看日志
+```
+
+**用了它就必须同时停掉 `server.js` 的定时器**（把 `INTERVAL` 注释掉并重启服务），二选一，不能同时开。
+
 想立刻刷一次，三条路任选：
 
 ```bash
-# 1) 在服务器上直接打本机端口
-curl -s http://127.0.0.1:8765/api/update
+# 1) 在服务器上直接打本机端口（最快，有并发锁）
+curl -s http://127.0.0.1:8775/api/update
 
 # 2) 从外网、已登录浏览器里点页面上的「↻ 更新比赛数据」按钮（走 cookie 登录态）
 
 # 3) 从外网用 Token（需要先配 ADMIN_TOKEN）
-curl -s -H "X-Admin-Token: <你的token>" http://<服务器IP>:8082/api/update
+curl -s -H "X-Admin-Token: <你的token>" http://<服务器IP>:8766/api/update
+```
+
+刷新状态随时可查：
+
+```bash
+curl -s http://127.0.0.1:8775/api/status
+# {"updating":false,"lastAt":1794550899550,"lastOk":true,"ageMin":55}
+#  ageMin 就是「距上次刷新多少分钟」，超过 130 说明定时器没在跑
 ```
 
 `/api/update` 的放行条件是**三选一**：
@@ -192,7 +221,7 @@ sudo systemctl restart jczq-predict
 |---|---|---|
 | `bash: deploy/install.sh: /bin/bash^M: bad interpreter` | 脚本被存成 CRLF | `sed -i 's/\r$//' deploy/install.sh` |
 | `systemctl status` 显示 `Active: failed` | 端口被占或没权限 | `journalctl -u jczq-predict -n 50` 看真实报错 |
-| 打开是 502 Bad Gateway | 服务没起来 | `curl 127.0.0.1:8765/api/status`，不通就重启 |
+| 打开是 502 Bad Gateway | 服务没起来 | `curl 127.0.0.1:8775/api/status`，不通就重启 |
 | 打开是 403 Forbidden | SELinux | `setsebool -P httpd_can_network_connect 1` |
 | 数据一直不更新 | 服务器访问不了 okooo.com | `curl -I https://www.okooo.com/jingcai/` 验证；不行就换网络或代理 |
 | `deploy` workflow 一直 skipped | 没配 Secrets | 按上面方式 B 第 1 步配齐 |
