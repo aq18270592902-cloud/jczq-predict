@@ -177,8 +177,11 @@ function parse500(html) {
   const re = /<tr\b[^>]*data-matchnum="(周[一二三四五六日]\d{3})"([\s\S]*?)(?=<tr\b|<\/tbody>)/g;
   let m;
   while ((m = re.exec(html))) {
-    const id = m[1], seg = m[2];
-    const attr = (n) => { const x = seg.match(new RegExp('data-' + n + '="([^"]*)"')); return x ? x[1] : ''; };
+    const id = m[1], seg = m[2], trTag = m[0].slice(0, m[0].indexOf('>') + 1);
+    /* 属性都在 <tr ...> 标签上，不在行内 HTML 里；早前从 seg 里找导致 time/league/rq 全空 */
+    const attr = (n) => { const x = trTag.match(new RegExp('data-' + n + '="([^"]*)"')); return x ? x[1] : ''; };
+    /* 联赛取 td-evt 里 a 的 title（全称，如「欧罗巴联赛」），比 data-simpleleague 的简称更可读 */
+    const lg = seg.match(/class="td td-evt"[\s\S]{0,300}?title="([^"]+)"/);
     const fidM = m[0].match(/data-fixtureid="(\d+)"/); /* tr 标签属性，用于详情页补半场 */
     /* 队名：历史完场页 data-* 属性常被移除，优先取 team-l / team-r 链接的 title */
     const tl = seg.match(/class="team-l"[^>]*title="([^"]+)"/);
@@ -189,8 +192,8 @@ function parse500(html) {
     rows.push({
       id,
       date: attr('matchdate'),
-      time: attr('matchtime').slice(0, 5),
-      league: attr('simpleleague'),
+      time: attr('matchtime').slice(0, 5) || attr('buyendtime').slice(11, 16),
+      league: (lg && lg[1]) || attr('simpleleague'),
       home: (tl && tl[1]) || attr('homesxname'),
       away: (tr2 && tr2[1]) || attr('awaysxname'),
       rq: attr('rangqiu'),
@@ -336,13 +339,19 @@ async function merge500(date) {
   day.matches.sort((a, b) => a.id.localeCompare(b.id, 'zh'));
   /* 回补缺失的半场比分（赛果大厅已滚出的场次，走500详情页） */
   let halfN = 0;
-  const needHalf = day.matches.filter((x) => x.result && x.result.score && !x.result.half);
+  /* live.500.com/detail.php 有反爬（连打几次就 567），批量回填时用 SKIP_HALF=1 关掉 */
+  const needHalf = process.env.SKIP_HALF === '1' ? [] : day.matches.filter((x) => x.result && x.result.score && !x.result.half);
   for (const x of needHalf) {
     const p = rows.find((r) => r.id === x.id);
     if (!p || !p.fid) continue;
     const half = await get500Half(p.fid);
     if (half) { x.result.half = half; halfN++; log('补半场 ' + x.id + ' ' + half); }
   }
+  d.meta = Object.assign({}, d.meta || {}, {
+    sources: ['okooo.com/jingcai', 'sporttery.cn', 'trade.500.com'],
+    matches: Object.values(d.days).reduce((n, x) => n + (x.matches || []).length, 0),
+    days: Object.keys(d.days).length
+  });
   saveAppData(d);
   log(date + ' 合并完成：新增 ' + added + ' 场，补比分 ' + scored + ' 处，补赔率 ' + oddsN + ' 处，校正队名 ' + fixedName + ' 处，补半场 ' + halfN + ' 处');
 }
