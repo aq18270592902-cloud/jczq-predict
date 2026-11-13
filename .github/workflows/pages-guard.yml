@@ -1,0 +1,77 @@
+name: pages-guard
+
+# 为什么需要这个：
+# GitHub Pages 的 legacy 构建器在「分支被连续 push」时，会把被打断的那次构建
+# 标成 errored。多数情况下后一次会接上，但实测出现过「最后一次也 errored，
+# 然后就此停住」—— jczq 线上 data.js 曾因此卡在旧版本 40 分钟。
+# 服务器每 2 小时回推 data.js、Actions 每小时也刷一次，两者撞车概率不低，
+# 所以这里每 3 小时兜一次底：最新构建是 errored 就重新触发。
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+
+concurrency:
+  group: pages-guard
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: 最新 Pages 构建失败则重触发
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api() { curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
+
+          body="$(api "https://api.github.com/repos/$REPO/pages/builds?per_page=1")"
+          status="$(printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j;try{j=JSON.parse(s)}catch{j=[]}const b=(Array.isArray(j)&&j[0])||{};console.log(b.status||"none")})')"
+          echo "最新构建状态：$status"
+
+          if [ "$status" = "errored" ]; then
+            code="$(curl -sS -o /tmp/re.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/pages/builds")"
+            echo "重触发 HTTP $code"; cat /tmp/re.json; echo
+            if [ "$code" != "201" ]; then echo "::error::重触发失败 HTTP $code"; exit 1; fi
+            echo "::notice::已重触发 Pages 构建"
+          else
+            echo "无需重触发"
+          fi
+
+      - name: 线上 data.js 落后仓库超过 6 小时则告警
+        run: |
+          set -euo pipefail
+          host="$(printf '%s' "${{ github.repository_owner }}" | tr 'A-Z' 'a-z')"
+          curl -sS --max-time 30 "https://$host.github.io/jczq-predict/data.js?cb=$(date +%s)" -o /tmp/live.js || true
+          curl -sS --max-time 30 -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.raw" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/data.js?ref=main" -o /tmp/repo.js || true
+          LIVE=/tmp/live.js REPOJS=/tmp/repo.js node -e '
+            const fs = require("fs");
+            const pick = (p) => {
+              try { const s = fs.readFileSync(p, "utf8"); const m = /"updatedAt"\s*:\s*"([^"]+)"/.exec(s); return m ? m[1] : ""; }
+              catch { return ""; }
+            };
+            const l = pick(process.env.LIVE), r = pick(process.env.REPOJS);
+            console.log("线上 updatedAt :", l || "(未取到)");
+            console.log("仓库 updatedAt :", r || "(未取到)");
+            if (!l || !r) { console.log("::warning::时间戳未解析，跳过比对"); process.exit(0); }
+            const dt = (Date.parse(r) - Date.parse(l)) / 3600000;
+            console.log("仓库比线上新：" + dt.toFixed(2) + " 小时");
+            if (dt > 6) console.log("::warning::线上 data.js 落后 " + dt.toFixed(1) + " 小时，Pages 可能未发布");
+          '
